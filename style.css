@@ -1,0 +1,10 @@
+body {
+  font-family: sans-serif;
+}
+
+#bus-data {
+  white-space: pre-wrap;
+  font-family: monospace;
+  border: 1px solid #ccc;
+  padding: 10px;
+}
