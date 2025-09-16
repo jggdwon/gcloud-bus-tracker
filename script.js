@@ -281,7 +281,7 @@ async function fetchData() {
         if (markers[itemIdentifier]) {
           // Update existing marker
           marker = markers[itemIdentifier];
-          marker.setLatLng([latitude, longitude]);
+          marker.slideTo([latitude, longitude], {duration: 3000});
           marker.getPopup().setContent(popupContent);
         } else {
           // Create new marker

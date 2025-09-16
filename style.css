@@ -114,6 +114,7 @@ body {
   color: white;
   text-align: center;
   line-height: 1;
+  transition: transform 3s ease-out; /* Added for smooth sliding */
 }
 
 .bus-icon i {
