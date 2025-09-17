@@ -1,1 +1,1 @@
-38f3f56 # Final stable version with predictive animation and error handling
+2e73353 # Final version with speed decay and stable animation

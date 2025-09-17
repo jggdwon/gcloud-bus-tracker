@@ -1,6 +1,6 @@
 /**
- * Bus Tracker Application - The Great Simplification
- * Reverting to the original, stable slideTo animation model.
+ * Bus Tracker Application - Final Stable Version v13
+ * Added 'Time at Stop' counter.
  */
 
 // --- Application State & Config ---
@@ -13,6 +13,7 @@ const config = {
         busStopLayer: 15,
     },
     speedAvgSize: 5,
+    atStopThreshold: 0.025, // miles, approx 40 meters
 };
 
 const appState = {
@@ -52,10 +53,9 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 function findNearbyBusStop(busLat, busLon) {
-    const threshold = 0.015;
     for (const stopCode in appState.busStops) {
         const stop = appState.busStops[stopCode];
-        if (getDistance(busLat, busLon, stop.Latitude, stop.Longitude) < threshold) {
+        if (getDistance(busLat, busLon, stop.Latitude, stop.Longitude) < config.atStopThreshold) {
             return stop;
         }
     }
@@ -79,9 +79,14 @@ function getIconByZoom(type, zoom, label, highlighted = false) {
 
 function updatePopupContent(bus) {
     const isTracked = appState.followedBus === bus.itemIdentifier;
-    const nearbyStop = findNearbyBusStop(bus.lat, bus.lon);
+    let atStopText = '';
+    if (bus.currentStopCode && appState.busStops[bus.currentStopCode]) {
+        const stopName = appState.busStops[bus.currentStopCode].CommonName;
+        const secondsAtStop = Math.round((Date.now() - bus.atStopSince) / 1000);
+        atStopText = `<b>At Stop:</b> ${stopName} <i class="fa fa-map-pin"></i><br><b>Time at stop:</b> ${secondsAtStop}s<br>`;
+    }
+
     const trackingText = isTracked ? '<div class="tracking-text">TRACKING</div>' : '';
-    const atStopText = nearbyStop ? `<b>At Stop:</b> ${nearbyStop.CommonName} <i class="fa fa-map-pin"></i><br>` : '';
     const speedText = `<b>Speed:</b> ${bus.displaySpeed.toFixed(1)} mph<br>`;
     bus.marker.getPopup().setContent(`${trackingText}${atStopText}${speedText}<b>Line:</b> ${bus.lineRef}<br><b>Bus:</b> ${bus.vehicleRef}<br><b>Destination:</b> ${bus.destinationName}`);
 }
@@ -195,30 +200,22 @@ async function fetchData() {
             const itemIdentifier = va.getElementsByTagName("ItemIdentifier")[0].textContent;
             currentVehicleIds.add(itemIdentifier);
 
-            const latElement = mvj.getElementsByTagName("Latitude")[0];
-            const lonElement = mvj.getElementsByTagName("Longitude")[0];
-            if (!latElement || !lonElement) return;
-
-            const newLat = parseFloat(latElement.textContent);
-            const newLon = parseFloat(lonElement.textContent);
+            const newLat = parseFloat(mvj.getElementsByTagName("Latitude")[0].textContent);
+            const newLon = parseFloat(mvj.getElementsByTagName("Longitude")[0].textContent);
             if (isNaN(newLat) || isNaN(newLon)) return;
 
             const bus = appState.buses[itemIdentifier];
 
             if (bus) { // Existing bus
                 const dist = getDistance(bus.lat, bus.lon, newLat, newLon);
-
-                // Only update speed if bus has moved meaningfully
-                if (dist > 0.005) { // ~8 meters
+                if (dist > 0.005) { // ~8 meters, bus is moving
                     const timeDiffHours = (recordedAtTime.getTime() - bus.lastUpdateTime) / 3600000;
                     const currentSpeed = timeDiffHours > 0 ? dist / timeDiffHours : 0;
-
                     bus.speedHistory.push(currentSpeed);
                     if (bus.speedHistory.length > config.speedAvgSize) bus.speedHistory.shift();
                     bus.displaySpeed = bus.speedHistory.reduce((a, b) => a + b, 0) / bus.speedHistory.length;
-                } else {
-                    // If bus is stationary, decay the speed smoothly instead of dropping to 0
-                    bus.displaySpeed *= 0.9;
+                } else { // Bus is stationary
+                    bus.displaySpeed *= 0.9; // Decay speed
                     if (bus.displaySpeed < 1) bus.displaySpeed = 0;
                 }
                 
@@ -226,8 +223,18 @@ async function fetchData() {
                 bus.lon = newLon;
                 bus.lastUpdateTime = recordedAtTime.getTime();
 
-                // Simple, reliable animation: duration is synced with the update interval.
-                bus.marker.slideTo([newLat, newLon], { duration: 3000 });
+                const nearbyStop = findNearbyBusStop(newLat, newLon);
+                if (nearbyStop) {
+                    if (bus.currentStopCode !== nearbyStop.ATCOCode) {
+                        bus.atStopSince = Date.now();
+                        bus.currentStopCode = nearbyStop.ATCOCode;
+                    }
+                } else {
+                    bus.atStopSince = null;
+                    bus.currentStopCode = null;
+                }
+
+                bus.marker.slideTo([newLat, newLon], { duration: appState.updateInterval });
                 updatePopupContent(bus);
             } else { // New bus
                 const marker = L.marker([newLat, newLon], { 
@@ -243,6 +250,7 @@ async function fetchData() {
                     lat: newLat, lon: newLon,
                     lastUpdateTime: recordedAtTime.getTime(),
                     speedHistory: [], displaySpeed: 0,
+                    atStopSince: null, currentStopCode: null,
                 };
                 marker.bindPopup('');
                 updatePopupContent(appState.buses[itemIdentifier]);
