@@ -4,6 +4,160 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css">
   <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/font-awesome/4.0.0/css/font-awesome.css">
   <link rel="stylesheet" type="text/css" href="style.css">
+  <style>
+    .bus-icon-container {
+      position: relative;
+      text-align: center;
+      width: 100%;
+      height: 100%;
+    }
+    .bus-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-weight: bold;
+      font-size: 14px; /* Bigger text */
+      text-shadow: 0 0 3px black, 0 0 3px black;
+      pointer-events: none;
+      z-index: 10;
+      background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent black bg */
+      padding: 1px 4px;
+      border-radius: 5px;
+    }
+    .bus-icon.size-48 .bus-label {
+        font-size: 16px;
+    }
+    .fa-bus {
+        position: relative;
+        z-index: 1;
+    }
+
+    .tracking-text {
+      color: #76ff03; /* Light green */
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      animation: flash-green-orange 2s infinite;
+    }
+
+    @keyframes flash-green-orange {
+      0%, 100% { color: #ff9800; } /* Orange */
+      50% { color: #76ff03; } /* Green */
+    }
+
+    .bus-icon.highlight .fa-bus {
+      /* Animation moved to tracking-text */
+    }
+
+    /* Dark Theme Popups */
+    .leaflet-popup-content-wrapper {
+      background: #333;
+      color: #fff;
+      border-radius: 5px;
+      box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+    }
+    .leaflet-popup-content {
+      margin: 13px 19px;
+      line-height: 1.4;
+    }
+    .leaflet-popup-tip-container {
+        width: 40px;
+        height: 20px;
+    }
+    .leaflet-popup-tip {
+      background: #333;
+      border: none;
+      box-shadow: none;
+    }
+    .leaflet-popup-content b {
+        color: #aee6ff;
+    }
+
+    /* Tab Styles */
+    .tab-nav {
+      display: flex;
+      margin-bottom: 10px;
+    }
+    .tab-link {
+      flex-grow: 1;
+      padding: 10px;
+      cursor: pointer;
+      border: 1px solid #555;
+      background: #444;
+      color: #fff;
+      text-align: center;
+    }
+    .tab-link.active {
+      background: #5784a0;
+      border-bottom: 1px solid #5784a0;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Error Popup Styles */
+    #error-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #error-overlay.hidden {
+      display: none;
+    }
+    #error-popup {
+      background: #2c2c2c;
+      padding: 25px;
+      border-radius: 8px;
+      border: 1px solid #555;
+      width: 80%;
+      max-width: 600px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #error-popup h2 {
+      margin-top: 0;
+      color: #ff8a80;
+    }
+    #error-popup pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+    .error-buttons {
+      margin-top: 15px;
+      text-align: right;
+    }
+    .error-buttons button {
+      padding: 8px 15px;
+      border: 1px solid #666;
+      background: #555;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 4px;
+      margin-left: 10px;
+    }
+    .error-buttons button:hover {
+      background: #666;
+    }
+  </style>
 </head>
 <body>
   <div id="sidebar">
@@ -17,21 +171,49 @@
     <div id="update-interval-container">
       <label for="update-interval">Update every:</label>
       <select id="update-interval">
-        <option value="200">0.2s</option>
+        <option value="500">0.5s</option>
         <option value="1000">1s</option>
-        <option value="2000" selected="">2s</option>
+        <option value="2000" selected>2s</option>
         <option value="5000">5s</option>
         <option value="10000">10s</option>
       </select>
     </div>
-    <ul id="bus-list"></ul>
-    <h2>Bus Stops</h2>
-    <ul id="bus-stop-list"></ul>
+    <div id="status-message"></div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-link active" data-tab="buses">Buses</button>
+      <button class="tab-link" data-tab="stops">Bus Stops</button>
+    </div>
+
+    <!-- Tab Content -->
+    <div id="buses" class="tab-content active">
+      <ul id="bus-list"></ul>
+    </div>
+    <div id="stops" class="tab-content">
+      <div class="toggle-container">
+        <label for="bus-stop-toggle">Show Bus Stops on Map:</label>
+        <input type="checkbox" id="bus-stop-toggle">
+      </div>
+      <ul id="bus-stop-list"></ul>
+    </div>
   </div>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
   <script src="https://unpkg.com/leaflet.marker.slideto@0.2.0/Leaflet.Marker.SlideTo.js"></script>
-  <script src="script.js?v=12345"></script>
+  <script src="script.js?v=final"></script>
+
+  <!-- Error Popup -->
+  <div id="error-overlay" class="hidden">
+    <div id="error-popup">
+      <h2>An Error Occurred</h2>
+      <pre id="error-message"></pre>
+      <div class="error-buttons">
+        <button id="copy-error-btn">Copy</button>
+        <button id="close-error-btn">Close</button>
+      </div>
+    </div>
+  </div>
 
 </body></html>

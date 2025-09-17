@@ -1,362 +1,330 @@
-const map = L.map('map', {
-    maxZoom: 18
-}).setView([53.58, -0.65], 13);
-const busList = document.getElementById('bus-list');
-const markers = {};
-const updateIndicator = document.getElementById('update-indicator');
-let openPopupInfo = null;
+/**
+ * Bus Tracker Application - Final Stable Version v2
+ * Main client-side logic with synced slideTo animation.
+ */
 
-const busStopsLayer = L.layerGroup(); // Don't add to map initially
-const routeLayer = L.layerGroup().addTo(map);
+// --- Application State & Config ---
+const config = {
+    boundingBox: '-0.70,53.53,-0.60,53.63',
+    map: { center: [53.58, -0.65], zoom: 13, maxZoom: 18 },
+    zoomLevels: {
+        busIcon: { small: 14, medium: 16 },
+        busStopIcon: { small: 15, medium: 17 },
+        busStopLayer: 15,
+    },
+    speedAvgSize: 5,
+    defaultSlideDuration: 3000,
+};
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
+const appState = {
+    buses: {},
+    busStops: {},
+    busStopMarkers: {},
+    followedBus: null,
+    map: null,
+    busStopsLayer: L.layerGroup(),
+    routeLayer: L.layerGroup(),
+    fetchIntervalId: null,
+    updateInterval: 2000,
+};
 
-function createBusIcon(size, highlighted = false) {
-    return L.divIcon({
-        html: '<i class="fa fa-bus"></i>',
-        className: `bus-icon size-${size} ${highlighted ? 'highlight' : ''}`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2]
-    });
+// --- DOM Elements ---
+const ui = {
+    busList: document.getElementById('bus-list'),
+    busStopList: document.getElementById('bus-stop-list'),
+    updateIndicator: document.getElementById('update-indicator'),
+    busStopToggle: document.getElementById('bus-stop-toggle'),
+    updateNowBtn: document.getElementById('update-now-btn'),
+    updateIntervalSelect: document.getElementById('update-interval'),
+    statusMessage: document.getElementById('status-message'),
+    errorOverlay: document.getElementById('error-overlay'),
+    errorMessage: document.getElementById('error-message'),
+    copyErrorBtn: document.getElementById('copy-error-btn'),
+    closeErrorBtn: document.getElementById('close-error-btn'),
+};
+
+// --- Map Initialization ---
+function initMap() {
+    appState.map = L.map('map', { maxZoom: config.map.maxZoom }).setView(config.map.center, config.map.zoom);
+    appState.routeLayer.addTo(appState.map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(appState.map);
+    appState.map.on('zoomend', handleMapZoom);
+    appState.map.on('click', unfollowBus);
 }
 
-const iconSmall = createBusIcon(20);
-const iconMedium = createBusIcon(32);
-const iconLarge = createBusIcon(48);
-const iconSmallHighlight = createBusIcon(20, true);
-const iconMediumHighlight = createBusIcon(32, true);
-const iconLargeHighlight = createBusIcon(48, true);
+// --- Helper Functions ---
+const toRad = (deg) => deg * Math.PI / 180;
+const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 3958.8; // miles
+    const rlat1 = toRad(lat1), rlat2 = toRad(lat2);
+    const dLat = rlat2 - rlat1, dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(rlat1) * Math.cos(rlat2) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    return 2 * R * Math.asin(Math.sqrt(a));
+};
 
-function createBusStopIcon(size, highlighted = false) {
-    return L.divIcon({
-        html: '<i class="fa fa-dot-circle-o"></i>',
-        className: `bus-stop-icon size-${size} ${highlighted ? 'highlight' : ''}`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2]
-    });
+// --- Icon & UI ---
+const createIcon = (html, className, size) => L.divIcon({ html, className, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+
+function createBusIcon(size, label, highlighted = false) {
+    const shortLabel = label.slice(-4);
+    const html = `<div class="bus-icon-container"><i class="fa fa-bus"></i><span class="bus-label">${shortLabel}</span></div>`;
+    return createIcon(html, `bus-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
 }
 
-const busStopIconSmall = createBusStopIcon(10);
-const busStopIconMedium = createBusStopIcon(16);
-const busStopIconLarge = createBusStopIcon(24);
-const busStopIconSmallHighlight = createBusStopIcon(10, true);
-const busStopIconMediumHighlight = createBusStopIcon(16, true);
-const busStopIconLargeHighlight = createBusStopIcon(24, true);
-
-function getIconByZoom(zoom, highlighted = false) {
-    if (zoom < 14) {
-        return highlighted ? iconSmallHighlight : iconSmall;
-    } else if (zoom < 16) {
-        return highlighted ? iconMediumHighlight : iconMedium;
-    } else {
-        return highlighted ? iconLargeHighlight : iconLarge;
-    }
+function getIconByZoom(type, zoom, label, highlighted = false) {
+    const levels = config.zoomLevels[type === 'bus' ? 'busIcon' : 'busStopIcon'];
+    const size = zoom < levels.small ? 20 : zoom < levels.medium ? 32 : 48;
+    return type === 'bus' ? createBusIcon(size, label, highlighted) : createIcon('<i class="fa fa-dot-circle-o"></i>', `bus-stop-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
 }
 
-function getBusStopIconByZoom(zoom, highlighted = false) {
-    if (zoom < 15) {
-        return highlighted ? busStopIconSmallHighlight : busStopIconSmall;
-    } else if (zoom < 17) {
-        return highlighted ? busStopIconMediumHighlight : busStopIconMedium;
-    } else {
-        return highlighted ? busStopIconLargeHighlight : busStopIconLarge;
-    }
+function updatePopupContent(bus) {
+    const isTracked = appState.followedBus === bus.itemIdentifier;
+    const nearbyStop = findNearbyBusStop(bus.lat, bus.lon);
+    const trackingText = isTracked ? '<div class="tracking-text">TRACKING</div>' : '';
+    const atStopText = nearbyStop ? `<b>At Stop:</b> ${nearbyStop.CommonName} <i class="fa fa-map-pin"></i><br>` : '';
+    const speedText = `<b>Speed:</b> ${bus.displaySpeed.toFixed(1)} mph<br>`;
+    bus.marker.getPopup().setContent(`${trackingText}${atStopText}${speedText}<b>Line:</b> ${bus.lineRef}<br><b>Bus:</b> ${bus.vehicleRef}<br><b>Destination:</b> ${bus.destinationName}`);
 }
 
-map.on('zoomend', () => {
-    const zoom = map.getZoom();
+function showErrorPopup(error) {
+    const errorMessage = `${error.name}: ${error.message}\n\n${error.stack}`;
+    ui.errorMessage.textContent = errorMessage;
+    ui.errorOverlay.classList.remove('hidden');
+}
 
-    // Show/hide bus stops
-    if (zoom >= 15) {
-        if (!map.hasLayer(busStopsLayer)) {
-            map.addLayer(busStopsLayer);
+function findNearbyBusStop(busLat, busLon) {
+    for (const stopCode in appState.busStops) {
+        const stop = appState.busStops[stopCode];
+        if (getDistance(busLat, busLon, stop.Latitude, stop.Longitude) < config.atStopThreshold) {
+            return stop;
         }
+    }
+    return null;
+}
+
+// --- Event Handlers ---
+function handleMapZoom() {
+    const zoom = appState.map.getZoom();
+    if (zoom >= config.zoomLevels.busStopLayer && ui.busStopToggle.checked) {
+        if (!appState.map.hasLayer(appState.busStopsLayer)) appState.map.addLayer(appState.busStopsLayer);
     } else {
-        if (map.hasLayer(busStopsLayer)) {
-            map.removeLayer(busStopsLayer);
+        if (appState.map.hasLayer(appState.busStopsLayer)) appState.map.removeLayer(appState.busStopsLayer);
+    }
+    for (const key in appState.buses) {
+        const bus = appState.buses[key];
+        bus.marker.setIcon(getIconByZoom('bus', zoom, bus.vehicleRef, appState.followedBus === key));
+    }
+    appState.busStopsLayer.eachLayer(layer => layer.setIcon(getIconByZoom('stop', zoom)));
+}
+
+function unfollowBus() {
+    if (appState.followedBus && appState.buses[appState.followedBus]) {
+        const bus = appState.buses[appState.followedBus];
+        bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.vehicleRef, false));
+    }
+    appState.followedBus = null;
+}
+
+function handleBusClick(itemIdentifier) {
+    if (appState.followedBus === itemIdentifier) {
+        unfollowBus();
+    } else {
+        unfollowBus();
+        appState.followedBus = itemIdentifier;
+        const bus = appState.buses[itemIdentifier];
+        bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.vehicleRef, true));
+        appState.map.setView(bus.marker.getLatLng(), 18);
+    }
+}
+
+function handleListClick(event) {
+    const target = event.target.closest('li');
+    if (!target || !target.dataset.id) return;
+    const { id, type } = target.dataset;
+    if (type === 'bus') {
+        handleBusClick(id);
+        const marker = appState.buses[id]?.marker;
+        if (marker && !marker.isPopupOpen()) marker.openPopup();
+    } else if (type === 'stop') {
+        const marker = appState.busStopMarkers[id];
+        if (marker) {
+            appState.map.setView(marker.getLatLng(), 17);
+            marker.openPopup();
         }
     }
+}
 
-    // Resize bus icons
-    const newBusIcon = getIconByZoom(zoom);
-    for (const key in markers) {
-        markers[key].setIcon(newBusIcon);
-    }
-
-    // Resize bus stop icons
-    const newBusStopIcon = getBusStopIconByZoom(zoom);
-    busStopsLayer.eachLayer(layer => {
-        layer.setIcon(newBusStopIcon);
-    });
-});
-
-const busStopList = document.getElementById('bus-stop-list');
-const busStops = {};
-const busStopMarkers = {};
-
+// --- Data Fetching & Processing ---
 async function fetchBusStops() {
     try {
         const response = await fetch('/bus-stops');
+        if (!response.ok) throw new Error(`API error fetching bus stops: ${response.status} ${response.statusText}`);
         const data = await response.json();
-
-        busStopList.innerHTML = '';
+        console.log(`Fetched ${data.length} bus stops.`);
+        data.sort((a, b) => (a.CommonName || '').localeCompare(b.CommonName || ''));
+        const fragment = document.createDocumentFragment();
         data.forEach(stop => {
-            if (stop.ATCOCode) {
-                busStops[stop.ATCOCode] = stop;
-            }
-            if (stop.Latitude && stop.Longitude) {
-                const marker = L.marker([stop.Latitude, stop.Longitude], {
-                    icon: getBusStopIconByZoom(map.getZoom())
-                }).addTo(busStopsLayer);
+            if (stop.ATCOCode && stop.Latitude && stop.Longitude) {
+                appState.busStops[stop.ATCOCode] = stop;
+                const marker = L.marker([stop.Latitude, stop.Longitude], { icon: getIconByZoom('stop', appState.map.getZoom()) }).addTo(appState.busStopsLayer);
                 marker.bindPopup(`<b>${stop.CommonName}</b><br>${stop.Street}`);
-                busStopMarkers[stop.ATCOCode] = marker;
-
+                appState.busStopMarkers[stop.ATCOCode] = marker;
                 const listItem = document.createElement('li');
+                listItem.dataset.id = stop.ATCOCode;
+                listItem.dataset.type = 'stop';
                 listItem.innerHTML = stop.CommonName;
-                listItem.onclick = () => {
-                    map.setView([stop.Latitude, stop.Longitude], 17);
-                    marker.openPopup();
-                };
-                listItem.onmouseover = () => {
-                    marker.setIcon(getBusStopIconByZoom(map.getZoom(), true));
-                };
-                listItem.onmouseout = () => {
-                    marker.setIcon(getBusStopIconByZoom(map.getZoom(), false));
-                };
-                busStopList.appendChild(listItem);
+                fragment.appendChild(listItem);
             }
         });
+        ui.busStopList.innerHTML = '';
+        ui.busStopList.appendChild(fragment);
     } catch (error) {
-        console.error('Error fetching bus stops:', error);
+        console.error(error);
+        showErrorPopup(error);
     }
-}
-
-let timetableData = null;
-
-async function fetchTimetables() {
-    try {
-        const response = await fetch('/timetables');
-        const data = await response.text();
-        const parser = new DOMParser();
-        timetableData = parser.parseFromString(data, "text/xml");
-        console.log('Timetables data parsed:', timetableData);
-    } catch (error) {
-        console.error('Error fetching timetables:', error);
-    }
-}
-
-function getRouteForBus(lineRef, datedVehicleJourneyRef) {
-    if (!timetableData) {
-        return null;
-    }
-
-    console.log("Searching for route with lineRef:", lineRef, "and datedVehicleJourneyRef:", datedVehicleJourneyRef);
-
-    // Find the VehicleJourney
-    const vehicleJourneys = timetableData.getElementsByTagName('VehicleJourney');
-    let journey = null;
-    for (let i = 0; i < vehicleJourneys.length; i++) {
-        const vj = vehicleJourneys[i];
-        const ticketMachineEl = vj.getElementsByTagName('TicketMachine')[0];
-        if (ticketMachineEl) {
-            const journeyCodeEl = ticketMachineEl.getElementsByTagName('JourneyCode')[0];
-            if (journeyCodeEl) {
-                const journeyCode = journeyCodeEl.textContent;
-                if (journeyCode === datedVehicleJourneyRef) {
-                    journey = vj;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (!journey) {
-        console.log("VehicleJourney not found");
-        return null;
-    }
-
-    // Find the JourneyPattern
-    const journeyPatternRef = journey.getElementsByTagName('JourneyPatternRef')[0].textContent;
-    const journeyPattern = timetableData.querySelector(`JourneyPattern[id="${journeyPatternRef}"]`);
-
-    if (!journeyPattern) {
-        console.log("JourneyPattern not found");
-        return null;
-    }
-
-    // Get the stop points
-    const stopPoints = [];
-    const journeyPatternSectionRefs = journeyPattern.getElementsByTagName('JourneyPatternSectionRefs');
-    for (let i = 0; i < journeyPatternSectionRefs.length; i++) {
-        const sectionRef = journeyPatternSectionRefs[i].textContent;
-        const journeyPatternSection = timetableData.querySelector(`JourneyPatternSection[id="${sectionRef}"]`);
-        if (journeyPatternSection) {
-            const timingLinks = journeyPatternSection.getElementsByTagName('JourneyPatternTimingLink');
-            for (let j = 0; j < timingLinks.length; j++) {
-                const fromStop = timingLinks[j].getElementsByTagName('From')[0].getElementsByTagName('StopPointRef')[0].textContent;
-                stopPoints.push(fromStop);
-                if (j === timingLinks.length - 1) {
-                    const toStop = timingLinks[j].getElementsByTagName('To')[0].getElementsByTagName('StopPointRef')[0].textContent;
-                    stopPoints.push(toStop);
-                }
-            }
-        }
-    }
-    
-    const routeCoords = [];
-    stopPoints.forEach(stopRef => {
-        const stop = busStops[stopRef];
-        if (stop && stop.Latitude && stop.Longitude) {
-            routeCoords.push([stop.Latitude, stop.Longitude]);
-        }
-    });
-
-    return {
-        stopRefs: stopPoints,
-        coords: routeCoords
-    };
 }
 
 async function fetchData() {
-  updateIndicator.classList.add('loading');
+    ui.updateIndicator.classList.add('loading');
+    try {
+        const response = await fetch(`/api?boundingBox=${config.boundingBox}`);
+        if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`);
+        
+        ui.statusMessage.textContent = '';
+        const xmlDoc = new DOMParser().parseFromString(await response.text(), "text/xml");
+        const vehicleActivities = Array.from(xmlDoc.getElementsByTagName("VehicleActivity"));
+        const currentVehicleIds = new Set();
 
-  // Store the currently open popup
-  for (const key in markers) {
-    if (markers[key].isPopupOpen()) {
-      openPopupInfo = {
-        key: key,
-        content: markers[key].getPopup().getContent()
-      };
-      break;
-    }
-  }
+        vehicleActivities.forEach(va => {
+            const mvj = va.getElementsByTagName("MonitoredVehicleJourney")[0];
+            const recordedAtTime = new Date(va.getElementsByTagName("RecordedAtTime")[0].textContent);
+            if (!mvj || isNaN(recordedAtTime.getTime())) return;
 
-  const apiUrl = '/api?boundingBox=-0.70,53.53,-0.60,53.63';
+            const itemIdentifier = va.getElementsByTagName("ItemIdentifier")[0].textContent;
+            currentVehicleIds.add(itemIdentifier);
 
-  try {
-    const response = await fetch(apiUrl);
-    const data = await response.text();
+            const newLat = parseFloat(mvj.getElementsByTagName("Latitude")[0].textContent);
+            const newLon = parseFloat(mvj.getElementsByTagName("Longitude")[0].textContent);
+            const bus = appState.buses[itemIdentifier];
 
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(data, "text/xml");
+            if (bus) { // Existing bus
+                const dist = getDistance(bus.lat, bus.lon, newLat, newLon);
+                const timeDiffHours = (recordedAtTime.getTime() - bus.lastUpdateTime) / 3600000;
+                const currentSpeed = timeDiffHours > 0 ? dist / timeDiffHours : 0;
 
-    const vehicleActivities = xmlDoc.getElementsByTagName("VehicleActivity");
+                bus.speedHistory.push(currentSpeed);
+                if (bus.speedHistory.length > config.speedAvgSize) bus.speedHistory.shift();
+                bus.displaySpeed = bus.speedHistory.reduce((a, b) => a + b, 0) / bus.speedHistory.length;
+                
+                bus.lat = newLat;
+                bus.lon = newLon;
+                bus.lastUpdateTime = recordedAtTime.getTime();
 
-    // Create a set of current vehicle identifiers for efficient lookup
-    const currentVehicleIds = new Set();
-    for (let i = 0; i < vehicleActivities.length; i++) {
-        const itemIdentifier = vehicleActivities[i].getElementsByTagName("ItemIdentifier")[0].textContent;
-        currentVehicleIds.add(itemIdentifier);
-    }
+                let duration = config.defaultSlideDuration;
+                if (bus.displaySpeed > 1) {
+                    const calculatedDuration = (dist / bus.displaySpeed) * 3600 * 1000;
+                    duration = Math.min(calculatedDuration, appState.updateInterval * 1.5);
+                }
 
-    // Remove markers for buses that are no longer in the feed
-    for (const key in markers) {
-        if (!currentVehicleIds.has(key)) {
-            map.removeLayer(markers[key]);
-            delete markers[key];
+                bus.marker.slideTo([newLat, newLon], { duration });
+                updatePopupContent(bus);
+            } else { // New bus
+                const marker = L.marker([newLat, newLon], { 
+                    icon: getIconByZoom('bus', appState.map.getZoom(), mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????'), 
+                    label: mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????' 
+                }).addTo(appState.map);
+
+                appState.buses[itemIdentifier] = {
+                    marker, itemIdentifier,
+                    lineRef: mvj.getElementsByTagName("LineRef")[0]?.textContent || 'N/A',
+                    vehicleRef: mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????',
+                    destinationName: mvj.getElementsByTagName("DestinationName")[0]?.textContent || 'N/A',
+                    lat: newLat, lon: newLon,
+                    lastUpdateTime: recordedAtTime.getTime(),
+                    speedHistory: [], displaySpeed: 0,
+                };
+                marker.bindPopup('');
+                updatePopupContent(appState.buses[itemIdentifier]);
+                marker.on('click', () => handleBusClick(itemIdentifier));
+                marker.on('slidemove', (e) => {
+                    if (appState.followedBus === itemIdentifier) {
+                        appState.map.panTo(e.latlng, { animate: false });
+                    }
+                });
+            }
+        });
+
+        for (const key in appState.buses) {
+            if (!currentVehicleIds.has(key)) {
+                appState.map.removeLayer(appState.buses[key].marker);
+                delete appState.buses[key];
+            }
         }
+        updateBusList();
+    } catch (error) {
+        console.error(error);
+        showErrorPopup(error);
+        ui.statusMessage.textContent = `API Error. Check console or popup.`;
+    } finally {
+        setTimeout(() => ui.updateIndicator.classList.remove('loading'), 500);
     }
-    
-    busList.innerHTML = '';
+}
 
-    for (let i = 0; i < vehicleActivities.length; i++) {
-      const vehicleActivity = vehicleActivities[i];
-      const itemIdentifier = vehicleActivity.getElementsByTagName("ItemIdentifier")[0].textContent;
-      const vehicleLocation = vehicleActivity.getElementsByTagName("VehicleLocation")[0];
-      const longitude = vehicleLocation.getElementsByTagName("Longitude")[0].textContent;
-      const latitude = vehicleLocation.getElementsByTagName("Latitude")[0].textContent;
-
-      const monitoredVehicleJourney = vehicleActivity.getElementsByTagName("MonitoredVehicleJourney")[0];
-      if (monitoredVehicleJourney) {
-        const lineRef = monitoredVehicleJourney.getElementsByTagName("LineRef")[0].textContent;
-        const directionRef = monitoredVehicleJourney.getElementsByTagName("DirectionRef")[0].textContent;
-        const destinationName = monitoredVehicleJourney.getElementsByTagName("DestinationName")[0].textContent;
-        const datedVehicleJourneyRef = monitoredVehicleJourney.getElementsByTagName("DatedVehicleJourneyRef")[0].textContent;
-
-        const popupContent = `<b>Line:</b> ${lineRef}<br><b>Direction:</b> ${directionRef}<br><b>Destination:</b> ${destinationName}`;
-
-        let marker;
-        if (markers[itemIdentifier]) {
-          // Update existing marker
-          marker = markers[itemIdentifier];
-          marker.slideTo([latitude, longitude], {duration: 3000});
-          marker.getPopup().setContent(popupContent);
-        } else {
-          // Create new marker
-          marker = L.marker([latitude, longitude], {
-            icon: getIconByZoom(map.getZoom())
-          }).addTo(map);
-          marker.bindPopup(popupContent);
-          markers[itemIdentifier] = marker;
-        }
-
+function updateBusList() {
+    const listFragment = document.createDocumentFragment();
+    Object.values(appState.buses).sort((a, b) => a.lineRef.localeCompare(b.lineRef)).forEach(bus => {
         const listItem = document.createElement('li');
-        listItem.innerHTML = `<b>Line:</b> ${lineRef} to ${destinationName}`;
-        listItem.onclick = () => {
-          map.setView([latitude, longitude], 15);
-          marker.openPopup();
-
-          routeLayer.clearLayers();
-          const route = getRouteForBus(lineRef, datedVehicleJourneyRef);
-          if (route) {
-              const polyline = L.polyline(route.coords, {color: 'red'}).addTo(routeLayer);
-              map.fitBounds(polyline.getBounds());
-              
-              route.stopRefs.forEach(stopRef => {
-                  const stopMarker = busStopMarkers[stopRef];
-                  if(stopMarker) {
-                      stopMarker.setIcon(getBusStopIconByZoom(map.getZoom(), true));
-                  }
-              });
-          }
-        };
-        listItem.onmouseover = () => {
-          marker.setIcon(getIconByZoom(map.getZoom(), true));
-        };
-        listItem.onmouseout = () => {
-          marker.setIcon(getIconByZoom(map.getZoom(), false));
-        };
-        busList.appendChild(listItem);
-      }
-    }
-
-    // Re-open the popup if it was open before the update
-    if (openPopupInfo && markers[openPopupInfo.key]) {
-      markers[openPopupInfo.key].openPopup();
-    }
-    openPopupInfo = null;
-
-  } catch (error) {
-    console.error('Error fetching or parsing bus data:', error);
-  } finally {
-    setTimeout(() => {
-      updateIndicator.classList.remove('loading');
-    }, 500);
-  }
+        listItem.dataset.id = bus.itemIdentifier;
+        listItem.dataset.type = 'bus';
+        listItem.dataset.vehicleRef = bus.vehicleRef;
+        listItem.innerHTML = `<b>${bus.lineRef}</b> to ${bus.destinationName} (ID: ${bus.vehicleRef.slice(-4)})`;
+        listFragment.appendChild(listItem);
+    });
+    ui.busList.innerHTML = '';
+    ui.busList.appendChild(listFragment);
 }
 
-const updateNowBtn = document.getElementById('update-now-btn');
-updateNowBtn.addEventListener('click', fetchData);
-
-const updateIntervalSelect = document.getElementById('update-interval');
-let updateInterval = parseInt(updateIntervalSelect.value);
-let intervalId = null;
-
+// --- Initialization ---
 function startAutoUpdate() {
-  if (intervalId) {
-    clearInterval(intervalId);
-  }
-  intervalId = setInterval(fetchData, updateInterval);
+    if (appState.fetchIntervalId) clearInterval(appState.fetchIntervalId);
+    appState.fetchIntervalId = setInterval(fetchData, appState.updateInterval);
 }
 
-updateIntervalSelect.addEventListener('change', (event) => {
-  updateInterval = parseInt(event.target.value);
-  startAutoUpdate();
-});
+function init() {
+    initMap();
+    appState.updateInterval = parseInt(ui.updateIntervalSelect.value, 10);
+    setupEventListeners();
+    fetchBusStops(); // Load stops at startup
+    fetchData();
+    startAutoUpdate();
+}
 
-startAutoUpdate();
-fetchData();
-fetchBusStops();
-fetchTimetables();
+function setupEventListeners() {
+    ui.updateNowBtn.addEventListener('click', fetchData);
+    ui.updateIntervalSelect.addEventListener('change', (e) => {
+        appState.updateInterval = parseInt(e.target.value, 10);
+        startAutoUpdate();
+    });
+    ui.busStopToggle.addEventListener('change', handleMapZoom);
+    document.querySelectorAll('.tab-link').forEach(button => {
+        button.addEventListener('click', (e) => {
+            document.querySelectorAll('.tab-link, .tab-content').forEach(el => el.classList.remove('active'));
+            e.target.classList.add('active');
+            document.getElementById(e.target.dataset.tab).classList.add('active');
+        });
+    });
+    ui.busList.addEventListener('click', handleListClick);
+    ui.busStopList.addEventListener('click', handleListClick);
+
+    // Error popup listeners
+    ui.closeErrorBtn.addEventListener('click', () => ui.errorOverlay.classList.add('hidden'));
+    ui.copyErrorBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(ui.errorMessage.textContent);
+        ui.copyErrorBtn.textContent = 'Copied!';
+        setTimeout(() => { ui.copyErrorBtn.textContent = 'Copy'; }, 2000);
+    });
+}
+
+init();
