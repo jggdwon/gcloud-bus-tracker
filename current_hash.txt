@@ -1,1 +1,1 @@
-2e73353 # Final version with speed decay and stable animation
+42f3c9e # feat: Mobile UI refactor - Wed Sep 17 11:48:13 AM UTC 2025
