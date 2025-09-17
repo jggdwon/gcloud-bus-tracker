@@ -1,17 +1,18 @@
 body {
   font-family: sans-serif;
   margin: 0;
-  display: flex;
   background-color: #1a1a1a;
   color: #eee;
+}
+
+#app-container {
+  display: flex;
 }
 
 #sidebar {
   width: 250px;
   background-color: #2c2c2c;
   padding: 20px;
-  overflow-y: auto;
-  height: 100vh;
   border-right: 1px solid #444;
 }
 
@@ -153,4 +154,70 @@ body {
 
 .bus-stop-icon.highlight {
   background-color: #ffc107; /* yellow */
+}
+
+.bus-icon.nearby {
+  filter: invert(100%);
+}
+
+.at-stop-info {
+  color: #ffc107; /* yellow */
+}
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  #app-container {
+    flex-direction: column;
+  }
+
+  #sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 50px;
+    border-right: none;
+    border-bottom: 1px solid #444;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    overflow-y: hidden;
+    transition: max-height 0.3s ease-in-out;
+  }
+
+  #sidebar.active {
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  #sidebar-content {
+    display: none;
+    padding-top: 50px;
+  }
+
+  #sidebar.active #sidebar-content {
+    display: block;
+  }
+
+  #menu-toggle {
+    display: block;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    font-size: 24px;
+    background: none;
+    border: none;
+    color: #eee;
+    cursor: pointer;
+  }
+
+  .mobile-only {
+    display: block;
+  }
+
+  #map {
+    height: 100vh;
+  }
 }

@@ -13,7 +13,7 @@ const config = {
         busStopLayer: 15,
     },
     speedAvgSize: 5,
-    atStopThreshold: 0.025, // miles, approx 40 meters
+    atStopThreshold: 0.0186411, // miles, approx 30 meters
 };
 
 const appState = {
@@ -40,6 +40,13 @@ function initMap() {
     }).addTo(appState.map);
     appState.map.on('zoomend', handleMapZoom);
     appState.map.on('click', unfollowBus);
+    appState.map.on('dragstart', unfollowBus);
+    appState.map.on('zoomstart', unfollowBus);
+    appState.map.on('popupopen', function(e) {
+        var px = appState.map.project(e.popup._latlng); // find the pixel location on the map where the popup anchor is
+        px.y -= e.popup._container.clientHeight/2; // find the height of the popup container, divide by 2, subtract from the Y axis
+        appState.map.panTo(appState.map.unproject(px),{animate: true}); // pan to new center
+    });
 }
 
 // --- Helper Functions ---
@@ -65,16 +72,19 @@ function findNearbyBusStop(busLat, busLon) {
 // --- Icon & UI ---
 const createIcon = (html, className, size) => L.divIcon({ html, className, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 
-function createBusIcon(size, label, highlighted = false) {
-    const shortLabel = label.slice(-4);
-    const html = `<div class="bus-icon-container"><i class="fa fa-bus"></i><span class="bus-label">${shortLabel}</span></div>`;
-    return createIcon(html, `bus-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
+function createBusIcon(size, label, highlighted = false, isNearStop = false) {
+    const html = `<div class="bus-icon-container"><i class="fa fa-bus"></i><span class="bus-label">${label}</span></div>`;
+    return createIcon(html, `bus-icon size-${size} ${highlighted ? 'highlight' : ''} ${isNearStop ? 'nearby' : ''}`, size);
 }
 
-function getIconByZoom(type, zoom, label, highlighted = false) {
+function getIconByZoom(type, zoom, label, highlighted = false, isNearStop = false) {
     const levels = config.zoomLevels[type === 'bus' ? 'busIcon' : 'busStopIcon'];
     const size = zoom < levels.small ? 40 : zoom < levels.medium ? 64 : 96;
-    return type === 'bus' ? createBusIcon(size, label, highlighted) : createIcon('<i class="fa fa-dot-circle-o"></i>', `bus-stop-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
+    if (type === 'bus') {
+        return createBusIcon(size, label, highlighted, isNearStop);
+    } else {
+        return createIcon('<i class="fa fa-dot-circle-o"></i>', `bus-stop-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
+    }
 }
 
 function updatePopupContent(bus) {
@@ -83,7 +93,7 @@ function updatePopupContent(bus) {
     if (bus.currentStopCode && appState.busStops[bus.currentStopCode]) {
         const stopName = appState.busStops[bus.currentStopCode].CommonName;
         const secondsAtStop = Math.round((Date.now() - bus.atStopSince) / 1000);
-        atStopText = `<b>At Stop:</b> ${stopName} <i class="fa fa-map-pin"></i><br><b>Time at stop:</b> ${secondsAtStop}s<br>`;
+        atStopText = `<div class="at-stop-info"><b>At Stop:</b> ${stopName} <i class="fa fa-map-pin"></i><br><b>Time at stop:</b> ${secondsAtStop}s</div>`;
     }
 
     const trackingText = isTracked ? '<div class="tracking-text">TRACKING</div>' : '';
@@ -107,7 +117,7 @@ function handleMapZoom() {
     }
     for (const key in appState.buses) {
         const bus = appState.buses[key];
-        bus.marker.setIcon(getIconByZoom('bus', zoom, bus.vehicleRef, appState.followedBus === key));
+        bus.marker.setIcon(getIconByZoom('bus', zoom, bus.lineRef, appState.followedBus === key, bus.isNearStop));
     }
     appState.busStopsLayer.eachLayer(layer => layer.setIcon(getIconByZoom('stop', zoom)));
 }
@@ -115,7 +125,7 @@ function handleMapZoom() {
 function unfollowBus() {
     if (appState.followedBus && appState.buses[appState.followedBus]) {
         const bus = appState.buses[appState.followedBus];
-        bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.vehicleRef, false));
+        bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, false, bus.isNearStop));
     }
     appState.followedBus = null;
 }
@@ -127,7 +137,7 @@ function handleBusClick(itemIdentifier) {
         unfollowBus();
         appState.followedBus = itemIdentifier;
         const bus = appState.buses[itemIdentifier];
-        bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.vehicleRef, true));
+        bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, true, bus.isNearStop));
         appState.map.setView(bus.marker.getLatLng(), 18);
     }
 }
@@ -205,6 +215,8 @@ async function fetchData() {
             if (isNaN(newLat) || isNaN(newLon)) return;
 
             const bus = appState.buses[itemIdentifier];
+            const nearbyStop = findNearbyBusStop(newLat, newLon);
+            const lineRef = mvj.getElementsByTagName("LineRef")[0]?.textContent || 'N/A';
 
             if (bus) { // Existing bus
                 const dist = getDistance(bus.lat, bus.lon, newLat, newLon);
@@ -222,8 +234,8 @@ async function fetchData() {
                 bus.lat = newLat;
                 bus.lon = newLon;
                 bus.lastUpdateTime = recordedAtTime.getTime();
+                bus.isNearStop = !!nearbyStop;
 
-                const nearbyStop = findNearbyBusStop(newLat, newLon);
                 if (nearbyStop) {
                     if (bus.currentStopCode !== nearbyStop.ATCOCode) {
                         bus.atStopSince = Date.now();
@@ -234,23 +246,25 @@ async function fetchData() {
                     bus.currentStopCode = null;
                 }
 
-                bus.marker.slideTo([newLat, newLon], { duration: appState.updateInterval });
+                bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, appState.followedBus === itemIdentifier, bus.isNearStop));
+                bus.marker.slideTo([newLat, newLon], { duration: 3000 });
                 updatePopupContent(bus);
             } else { // New bus
                 const marker = L.marker([newLat, newLon], { 
-                    icon: getIconByZoom('bus', appState.map.getZoom(), mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????'), 
-                    label: mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????' 
+                    icon: getIconByZoom('bus', appState.map.getZoom(), lineRef, false, !!nearbyStop), 
+                    label: lineRef
                 }).addTo(appState.map);
 
                 appState.buses[itemIdentifier] = {
                     marker, itemIdentifier,
-                    lineRef: mvj.getElementsByTagName("LineRef")[0]?.textContent || 'N/A',
+                    lineRef: lineRef,
                     vehicleRef: mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????',
                     destinationName: mvj.getElementsByTagName("DestinationName")[0]?.textContent || 'N/A',
                     lat: newLat, lon: newLon,
                     lastUpdateTime: recordedAtTime.getTime(),
                     speedHistory: [], displaySpeed: 0,
                     atStopSince: null, currentStopCode: null,
+                    isNearStop: !!nearbyStop,
                 };
                 marker.bindPopup('');
                 updatePopupContent(appState.buses[itemIdentifier]);
@@ -316,6 +330,8 @@ function init() {
         errorMessage: document.getElementById('error-message'),
         copyErrorBtn: document.getElementById('copy-error-btn'),
         closeErrorBtn: document.getElementById('close-error-btn'),
+        menuToggle: document.getElementById('menu-toggle'),
+        sidebar: document.getElementById('sidebar'),
     });
 
     initMap();
@@ -352,6 +368,10 @@ function setupEventListeners() {
         navigator.clipboard.writeText(ui.errorMessage.textContent);
         ui.copyErrorBtn.textContent = 'Copied!';
         setTimeout(() => { ui.copyErrorBtn.textContent = 'Copy'; }, 2000);
+    });
+
+    ui.menuToggle.addEventListener('click', () => {
+        ui.sidebar.classList.toggle('active');
     });
 }
 
