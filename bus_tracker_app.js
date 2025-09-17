@@ -1,6 +1,6 @@
 /**
- * Bus Tracker Application - Final Stable Version v2
- * Main client-side logic with synced slideTo animation.
+ * Bus Tracker Application - The Great Simplification
+ * Reverting to the original, stable slideTo animation model.
  */
 
 // --- Application State & Config ---
@@ -13,7 +13,6 @@ const config = {
         busStopLayer: 15,
     },
     speedAvgSize: 5,
-    defaultSlideDuration: 3000,
 };
 
 const appState = {
@@ -29,19 +28,7 @@ const appState = {
 };
 
 // --- DOM Elements ---
-const ui = {
-    busList: document.getElementById('bus-list'),
-    busStopList: document.getElementById('bus-stop-list'),
-    updateIndicator: document.getElementById('update-indicator'),
-    busStopToggle: document.getElementById('bus-stop-toggle'),
-    updateNowBtn: document.getElementById('update-now-btn'),
-    updateIntervalSelect: document.getElementById('update-interval'),
-    statusMessage: document.getElementById('status-message'),
-    errorOverlay: document.getElementById('error-overlay'),
-    errorMessage: document.getElementById('error-message'),
-    copyErrorBtn: document.getElementById('copy-error-btn'),
-    closeErrorBtn: document.getElementById('close-error-btn'),
-};
+const ui = {};
 
 // --- Map Initialization ---
 function initMap() {
@@ -64,6 +51,17 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
     return 2 * R * Math.asin(Math.sqrt(a));
 };
 
+function findNearbyBusStop(busLat, busLon) {
+    const threshold = 0.015;
+    for (const stopCode in appState.busStops) {
+        const stop = appState.busStops[stopCode];
+        if (getDistance(busLat, busLon, stop.Latitude, stop.Longitude) < threshold) {
+            return stop;
+        }
+    }
+    return null;
+}
+
 // --- Icon & UI ---
 const createIcon = (html, className, size) => L.divIcon({ html, className, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 
@@ -75,7 +73,7 @@ function createBusIcon(size, label, highlighted = false) {
 
 function getIconByZoom(type, zoom, label, highlighted = false) {
     const levels = config.zoomLevels[type === 'bus' ? 'busIcon' : 'busStopIcon'];
-    const size = zoom < levels.small ? 20 : zoom < levels.medium ? 32 : 48;
+    const size = zoom < levels.small ? 40 : zoom < levels.medium ? 64 : 96;
     return type === 'bus' ? createBusIcon(size, label, highlighted) : createIcon('<i class="fa fa-dot-circle-o"></i>', `bus-stop-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
 }
 
@@ -92,16 +90,6 @@ function showErrorPopup(error) {
     const errorMessage = `${error.name}: ${error.message}\n\n${error.stack}`;
     ui.errorMessage.textContent = errorMessage;
     ui.errorOverlay.classList.remove('hidden');
-}
-
-function findNearbyBusStop(busLat, busLon) {
-    for (const stopCode in appState.busStops) {
-        const stop = appState.busStops[stopCode];
-        if (getDistance(busLat, busLon, stop.Latitude, stop.Longitude) < config.atStopThreshold) {
-            return stop;
-        }
-    }
-    return null;
 }
 
 // --- Event Handlers ---
@@ -162,7 +150,9 @@ async function fetchBusStops() {
         const response = await fetch('/bus-stops');
         if (!response.ok) throw new Error(`API error fetching bus stops: ${response.status} ${response.statusText}`);
         const data = await response.json();
-        console.log(`Fetched ${data.length} bus stops.`);
+        if (!data || !Array.isArray(data)) throw new Error('Received invalid data for bus stops.');
+        if (data.length === 0) return;
+
         data.sort((a, b) => (a.CommonName || '').localeCompare(b.CommonName || ''));
         const fragment = document.createDocumentFragment();
         data.forEach(stop => {
@@ -205,30 +195,39 @@ async function fetchData() {
             const itemIdentifier = va.getElementsByTagName("ItemIdentifier")[0].textContent;
             currentVehicleIds.add(itemIdentifier);
 
-            const newLat = parseFloat(mvj.getElementsByTagName("Latitude")[0].textContent);
-            const newLon = parseFloat(mvj.getElementsByTagName("Longitude")[0].textContent);
+            const latElement = mvj.getElementsByTagName("Latitude")[0];
+            const lonElement = mvj.getElementsByTagName("Longitude")[0];
+            if (!latElement || !lonElement) return;
+
+            const newLat = parseFloat(latElement.textContent);
+            const newLon = parseFloat(lonElement.textContent);
+            if (isNaN(newLat) || isNaN(newLon)) return;
+
             const bus = appState.buses[itemIdentifier];
 
             if (bus) { // Existing bus
                 const dist = getDistance(bus.lat, bus.lon, newLat, newLon);
-                const timeDiffHours = (recordedAtTime.getTime() - bus.lastUpdateTime) / 3600000;
-                const currentSpeed = timeDiffHours > 0 ? dist / timeDiffHours : 0;
 
-                bus.speedHistory.push(currentSpeed);
-                if (bus.speedHistory.length > config.speedAvgSize) bus.speedHistory.shift();
-                bus.displaySpeed = bus.speedHistory.reduce((a, b) => a + b, 0) / bus.speedHistory.length;
+                // Only update speed if bus has moved meaningfully
+                if (dist > 0.005) { // ~8 meters
+                    const timeDiffHours = (recordedAtTime.getTime() - bus.lastUpdateTime) / 3600000;
+                    const currentSpeed = timeDiffHours > 0 ? dist / timeDiffHours : 0;
+
+                    bus.speedHistory.push(currentSpeed);
+                    if (bus.speedHistory.length > config.speedAvgSize) bus.speedHistory.shift();
+                    bus.displaySpeed = bus.speedHistory.reduce((a, b) => a + b, 0) / bus.speedHistory.length;
+                } else {
+                    // If bus is stationary, decay the speed smoothly instead of dropping to 0
+                    bus.displaySpeed *= 0.9;
+                    if (bus.displaySpeed < 1) bus.displaySpeed = 0;
+                }
                 
                 bus.lat = newLat;
                 bus.lon = newLon;
                 bus.lastUpdateTime = recordedAtTime.getTime();
 
-                let duration = config.defaultSlideDuration;
-                if (bus.displaySpeed > 1) {
-                    const calculatedDuration = (dist / bus.displaySpeed) * 3600 * 1000;
-                    duration = Math.min(calculatedDuration, appState.updateInterval * 1.5);
-                }
-
-                bus.marker.slideTo([newLat, newLon], { duration });
+                // Simple, reliable animation: duration is synced with the update interval.
+                bus.marker.slideTo([newLat, newLon], { duration: 3000 });
                 updatePopupContent(bus);
             } else { // New bus
                 const marker = L.marker([newLat, newLon], { 
@@ -266,7 +265,11 @@ async function fetchData() {
     } catch (error) {
         console.error(error);
         showErrorPopup(error);
-        ui.statusMessage.textContent = `API Error. Check console or popup.`;
+        ui.statusMessage.textContent = `Updates paused due to error.`;
+        if (appState.fetchIntervalId) {
+            clearInterval(appState.fetchIntervalId);
+            appState.fetchIntervalId = null;
+        }
     } finally {
         setTimeout(() => ui.updateIndicator.classList.remove('loading'), 500);
     }
@@ -293,16 +296,34 @@ function startAutoUpdate() {
 }
 
 function init() {
+    Object.assign(ui, {
+        busList: document.getElementById('bus-list'),
+        busStopList: document.getElementById('bus-stop-list'),
+        updateIndicator: document.getElementById('update-indicator'),
+        busStopToggle: document.getElementById('bus-stop-toggle'),
+        updateNowBtn: document.getElementById('update-now-btn'),
+        updateIntervalSelect: document.getElementById('update-interval'),
+        statusMessage: document.getElementById('status-message'),
+        errorOverlay: document.getElementById('error-overlay'),
+        errorMessage: document.getElementById('error-message'),
+        copyErrorBtn: document.getElementById('copy-error-btn'),
+        closeErrorBtn: document.getElementById('close-error-btn'),
+    });
+
     initMap();
     appState.updateInterval = parseInt(ui.updateIntervalSelect.value, 10);
     setupEventListeners();
-    fetchBusStops(); // Load stops at startup
+    fetchBusStops();
     fetchData();
     startAutoUpdate();
 }
 
 function setupEventListeners() {
-    ui.updateNowBtn.addEventListener('click', fetchData);
+    ui.updateNowBtn.addEventListener('click', () => {
+        if (appState.fetchIntervalId) clearInterval(appState.fetchIntervalId);
+        fetchData();
+        startAutoUpdate();
+    });
     ui.updateIntervalSelect.addEventListener('change', (e) => {
         appState.updateInterval = parseInt(e.target.value, 10);
         startAutoUpdate();
@@ -318,7 +339,6 @@ function setupEventListeners() {
     ui.busList.addEventListener('click', handleListClick);
     ui.busStopList.addEventListener('click', handleListClick);
 
-    // Error popup listeners
     ui.closeErrorBtn.addEventListener('click', () => ui.errorOverlay.classList.add('hidden'));
     ui.copyErrorBtn.addEventListener('click', () => {
         navigator.clipboard.writeText(ui.errorMessage.textContent);
@@ -327,4 +347,4 @@ function setupEventListeners() {
     });
 }
 
-init();
+document.addEventListener('DOMContentLoaded', init);

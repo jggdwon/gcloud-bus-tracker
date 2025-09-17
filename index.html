@@ -18,16 +18,18 @@
       transform: translate(-50%, -50%);
       color: white;
       font-weight: bold;
-      font-size: 14px; /* Bigger text */
+      font-size: 28px; /* Doubled size */
       text-shadow: 0 0 3px black, 0 0 3px black;
       pointer-events: none;
       z-index: 10;
-      background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent black bg */
-      padding: 1px 4px;
-      border-radius: 5px;
+      background-color: rgba(0, 0, 0, 0.6);
+      padding: 2px 8px;
+      border-radius: 8px;
+      width: auto; /* Allow overflow */
+      white-space: nowrap;
     }
-    .bus-icon.size-48 .bus-label {
-        font-size: 16px;
+    .bus-icon.size-96 .bus-label { /* Corresponds to largest bus icon */
+        font-size: 32px;
     }
     .fa-bus {
         position: relative;
@@ -202,7 +204,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
   <script src="https://unpkg.com/leaflet.marker.slideto@0.2.0/Leaflet.Marker.SlideTo.js"></script>
-  <script src="script.js?v=final"></script>
+  <script src="bus_tracker_app.js"></script>
 
   <!-- Error Popup -->
   <div id="error-overlay" class="hidden">
