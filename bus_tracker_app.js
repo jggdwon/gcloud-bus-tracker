@@ -140,7 +140,7 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     let indicatorClass = '';
     if (movementState === 'moved') indicatorClass = 'flash-green';
     if (movementState === 'stationary') indicatorClass = 'flash-red';
-    const indicatorHTML = `<span class="update-heart ${indicatorClass}"></span>`;
+    const indicatorHTML = `<span class="update-heart ${indicatorClass}"><span class="heart-counter">0</span></span>`;
 
     const speedColor = getSpeedColor(bus.displaySpeed);
     const speedHTML = `<span class="speed-value" style="background-color: ${speedColor};">${bus.displaySpeed.toFixed(1)}</span> mph`;
@@ -438,6 +438,22 @@ function startAutoUpdate() {
     appState.fetchIntervalId = setInterval(fetchData, appState.updateInterval);
 }
 
+function updateHeartCounters() {
+    for (const key in appState.buses) {
+        const bus = appState.buses[key];
+        if (bus.marker.isPopupOpen()) {
+            const popupElement = bus.marker.getPopup().getElement();
+            if (popupElement) {
+                const counter = popupElement.querySelector('.heart-counter');
+                if (counter) {
+                    const secondsSinceUpdate = Math.round((Date.now() - bus.lastUpdateTime) / 1000);
+                    counter.textContent = secondsSinceUpdate;
+                }
+            }
+        }
+    }
+}
+
 function init() {
     Object.assign(ui, {
         busList: document.getElementById('bus-list'),
@@ -459,6 +475,7 @@ function init() {
     fetchData();
     startPredictiveTracking();
     startAutoUpdate();
+    setInterval(updateHeartCounters, 1000);
 }
 
 function setupEventListeners() {

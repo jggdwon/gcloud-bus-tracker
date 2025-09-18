@@ -204,3 +204,13 @@ html, body {
   font-size: 12px;
   font-weight: bold;
 }
+
+.heart-counter {
+    position: absolute;
+    top: 0%;
+    left: 50%;
+    transform: translate(-50%, -100%) rotate(45deg);
+    color: white;
+    font-size: 8px;
+    font-weight: bold;
+}
