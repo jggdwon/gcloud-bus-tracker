@@ -5,8 +5,8 @@
 
 // --- Application State & Config ---
 const config = {
-    boundingBox: '-0.70,53.53,-0.60,53.63',
-    map: { center: [53.58, -0.65], zoom: 13, maxZoom: 18 },
+    boundingBox: '-3.574,50.690,-3.454,50.749',
+    map: { center: [50.7195, -3.514], zoom: 13, maxZoom: 18 },
     zoomLevels: {
         busIcon: { small: 14, medium: 16 },
         busStopIcon: { small: 15, medium: 17 },
@@ -28,6 +28,7 @@ const appState = {
     heartbeatIntervalId: null,
     updateInterval: 2000,
     isPanningProgrammatically: false,
+    stopListsCache: {}, // Cache for lineRef -> [stop names]
 };
 
 // --- DOM Elements ---
@@ -141,6 +142,133 @@ function getColorFromLineRef(lineRef) {
     return `hsl(${hue}, 70%, 50%)`;
 }
 
+async function fetchAndParseStopList(lineRef, directionRef) {
+    const cacheKey = `${lineRef}_${directionRef}`;
+    if (appState.stopListsCache[cacheKey]) {
+        return appState.stopListsCache[cacheKey];
+    }
+
+    let debugLog = `--- Debug Log for ${lineRef} (${directionRef}) ---\n`;
+    debugLog += `Cache key: ${cacheKey}\n`;
+
+    try {
+        debugLog += `Fetching /timetable-for-line?lineRef=${lineRef}\n`;
+        const response = await fetch(`/timetable-for-line?lineRef=${lineRef}`);
+        debugLog += `Response status: ${response.status}\n`;
+        if (!response.ok) {
+            throw new Error(`Failed to fetch timetable for line ${lineRef}`);
+        }
+        const xmlText = await response.text();
+        debugLog += `XML received (first 100 chars): ${xmlText.substring(0, 100)}\n`;
+        const xmlDoc = new DOMParser().parseFromString(xmlText, "text/xml");
+
+        // 1. Create a map of all StopPoints
+        const stopPoints = {};
+        const stopPointNodes = xmlDoc.getElementsByTagName('StopPoint');
+        debugLog += `Found ${stopPointNodes.length} <StopPoint> nodes.\n`;
+        for (const node of stopPointNodes) {
+            const stopPointRef = node.getElementsByTagName('AtcoCode')[0]?.textContent;
+            const commonName = node.getElementsByTagName('CommonName')[0]?.textContent;
+            const lat = node.getElementsByTagName('Latitude')[0]?.textContent;
+            const lon = node.getElementsByTagName('Longitude')[0]?.textContent;
+            if (stopPointRef && commonName && lat && lon) {
+                stopPoints[stopPointRef] = { name: commonName, lat: parseFloat(lat), lon: parseFloat(lon) };
+            }
+        }
+        debugLog += `Parsed ${Object.keys(stopPoints).length} unique stop points.\n`;
+
+        // 2. Find the correct JourneyPattern
+        let finalStopList = [];
+        const services = xmlDoc.getElementsByTagName('Service');
+        debugLog += `Found ${services.length} <Service> nodes.\n`;
+        for (const service of services) {
+            const serviceLineName = service.getElementsByTagName('LineName')[0]?.textContent;
+            debugLog += `Checking service with LineName: ${serviceLineName}\n`;
+            if (serviceLineName === lineRef) {
+                debugLog += `  -> Match found!\n`;
+                const journeyPatterns = service.getElementsByTagName('JourneyPattern');
+                debugLog += `  Found ${journeyPatterns.length} <JourneyPattern> nodes.\n`;
+                for (const jp of journeyPatterns) {
+                    const jpDirection = jp.getElementsByTagName('Direction')[0]?.textContent?.toLowerCase();
+                    debugLog += `  Checking journey pattern with Direction: ${jpDirection}\n`;
+                    if (jpDirection === directionRef) {
+                        debugLog += `    -> Match found!\n`;
+                        const timingLinks = jp.getElementsByTagName('JourneyPatternTimingLink');
+                        debugLog += `    Found ${timingLinks.length} <JourneyPatternTimingLink> nodes.\n`;
+                        const stopRefs = [];
+                        if (timingLinks.length > 0) {
+                            const firstStopRef = timingLinks[0].getElementsByTagName('From')[0]?.getElementsByTagName('StopPointRef')[0]?.textContent;
+                            if (firstStopRef) stopRefs.push(firstStopRef);
+                            for (const link of timingLinks) {
+                                const stopRef = link.getElementsByTagName('To')[0]?.getElementsByTagName('StopPointRef')[0]?.textContent;
+                                if (stopRef) stopRefs.push(stopRef);
+                            }
+                        }
+                        debugLog += `    Parsed ${stopRefs.length} stop references from links.\n`;
+                        const namedStops = stopRefs.map(ref => stopPoints[ref]).filter(Boolean);
+                        debugLog += `    Converted to ${namedStops.length} named stops.\n`;
+                        if (namedStops.length > 0) {
+                            finalStopList = namedStops;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (finalStopList.length > 0) break;
+        }
+        
+        debugLog += `Final parsed stop list count: ${finalStopList.length}\n`;
+        if (finalStopList.length === 0) {
+            throw new Error("Failed to parse any stops. See log for details.");
+        }
+
+        appState.stopListsCache[cacheKey] = finalStopList;
+        return finalStopList;
+
+    } catch (error) {
+        console.error(`Error parsing stop list for line ${lineRef}:`, error);
+        debugLog += `\n--- ERROR ---\n${error.name}: ${error.message}\n${error.stack}`;
+        showErrorPopup({ name: `Debug Log for ${lineRef}`, message: '', stack: debugLog });
+        appState.stopListsCache[cacheKey] = [];
+        return [];
+    }
+}
+
+function updateNextStopForBus(bus) {
+    const directionRef = bus.directionRef;
+    if (!directionRef) return;
+
+    const cacheKey = `${bus.lineRef}_${directionRef}`;
+    const stopList = appState.stopListsCache[cacheKey];
+
+    if (!stopList || stopList.length === 0) {
+        bus.nextStopName = null;
+        return;
+    }
+
+    let closestStop = null;
+    let minDistance = Infinity;
+
+    const busLatLng = bus.marker.getLatLng();
+
+    for (const stop of stopList) {
+        const dist = getDistance(busLatLng.lat, busLatLng.lng, stop.lat, stop.lon);
+
+        // Check if the stop is "ahead" of the bus
+        const bearingToStop = calculateBearing(busLatLng.lat, busLatLng.lng, stop.lat, stop.lon);
+        const bearingDiff = Math.abs(bus.bearing - bearingToStop);
+        const isAhead = Math.min(bearingDiff, 360 - bearingDiff) < 90; // Check if it's within a 180-degree arc in front of the bus
+
+        if (isAhead && dist < minDistance) {
+            minDistance = dist;
+            closestStop = stop;
+        }
+    }
+
+    bus.nextStopName = closestStop ? closestStop.name : (stopList.length > 0 ? stopList[stopList.length - 1].name : null);
+    console.log(`Bus ${bus.vehicleRef} next stop: ${bus.nextStopName}`);
+}
+
 // --- Icon & UI ---
 const createIcon = (html, className, size) => L.divIcon({ html, className, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 
@@ -203,12 +331,14 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
 
     const topLineHTML = `<div class="top-line">${indicatorHTML} ${speedHTML} ${compassHTML}</div>`;
     
+    const nextStopHTML = `<span style="color: #999;"><b>Next Stop:</b> (Temporarily disabled)</span><br>`;
+    
     const content = `
         ${topLineHTML}
         ${atStopText}
         <b>Line:</b> ${bus.lineRef}<br>
         <b>Bus:</b> ${bus.vehicleRef}<br>
-        <b>Destination:</b> ${bus.destinationName}
+        ${nextStopHTML}
     `;
     bus.marker.getPopup().setContent(content);
 }
@@ -374,9 +504,7 @@ async function fetchData() {
                     });
 
                 } else { // Bus is stationary or has very small GPS jitter
-                    bus.stoppedUpdateCount++;
-                    // We just make a note that the bus should be stopped. 
-                    // The 'slideend' event handler will take care of updating the UI when the animation is done.
+                    // We do nothing here. The 'slideend' event will handle setting speed to 0 when the animation finishes.
                 }
                 
                 // ALWAYS update the internal state to the latest actual position
@@ -385,6 +513,9 @@ async function fetchData() {
                 bus.lastUpdateTime = recordedAtTime.getTime();
                 bus.lastPollTime = pollTime;
                 bus.isNearStop = !!nearbyStop;
+                bus.directionRef = mvj.getElementsByTagName("DirectionRef")[0]?.textContent?.toLowerCase();
+
+                updateNextStopForBus(bus);
 
                 if (nearbyStop) {
                     if (bus.currentStopCode !== nearbyStop.ATCOCode) {
@@ -424,18 +555,22 @@ async function fetchData() {
                     atStopSince: null, currentStopCode: null,
                     isNearStop: !!nearbyStop,
                     isAnimating: false, // Starts stationary
-                    stoppedUpdateCount: 0,
+                    nextStopName: null,
+                    directionRef: mvj.getElementsByTagName("DirectionRef")[0]?.textContent?.toLowerCase(),
                 };
+
+                // Fetch the stop list for this new bus's line and direction
+                const directionRef = mvj.getElementsByTagName("DirectionRef")[0]?.textContent?.toLowerCase();
+                if (lineRef && directionRef) {
+                    // fetchAndParseStopList(lineRef, directionRef); // DISABLED FOR NOW
+                }
                 
                 marker.on('slideend', () => {
                     const bus = appState.buses[itemIdentifier];
                     if (bus) {
                         bus.isAnimating = false;
-                        // If we've determined the bus has stopped while it was animating, update the speed now.
-                        if (bus.stoppedUpdateCount > 1) {
-                            bus.displaySpeed = 0;
-                            bus.speedHistory = [];
-                        }
+                        bus.displaySpeed = 0;
+                        bus.speedHistory = [];
                     }
                 });
 

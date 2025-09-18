@@ -88,6 +88,64 @@ app.get('/timetables', async (req, res) => {
     }
 });
 
+app.get('/timetable-for-line', async (req, res) => {
+    const { lineRef } = req.query;
+    if (!lineRef) {
+        return res.status(400).send('lineRef parameter is required');
+    }
+
+    const datasetIdCacheKey = `dataset_id_${lineRef}`;
+    const timetableCacheKey = `timetable_${lineRef}`;
+
+    // Check for cached timetable data first
+    if (cache[timetableCacheKey] && Date.now() - cache[timetableCacheKey].timestamp < CACHE_DURATION_MS) {
+        console.log(`Serving timetable for line ${lineRef} from cache.`);
+        return res.send(cache[timetableCacheKey].data);
+    }
+
+    try {
+        let datasetId = cache[datasetIdCacheKey]?.data;
+
+        // If we don't have the dataset ID cached, find it
+        if (!datasetId) {
+            console.log(`No dataset ID cached for line ${lineRef}. Searching...`);
+            const listUrl = `https://data.bus-data.dft.gov.uk/api/v1/dataset/?noc=HNTS&api_key=${apiKey}`;
+            const listResponse = await axios.get(listUrl, { headers: { 'accept': 'application/json', 'User-Agent': 'BusTracker/1.0' } });
+            const datasets = listResponse.data.results;
+            const targetDataset = datasets.find(d => {
+                const name = d.name.toLowerCase();
+                const desc = d.description.toLowerCase();
+                const line = lineRef.toLowerCase();
+                return name.includes(line) || desc.includes(line);
+            });
+
+            if (targetDataset) {
+                datasetId = targetDataset.id;
+                cache[datasetIdCacheKey] = { data: datasetId, timestamp: Date.now() };
+                console.log(`Found and cached dataset ID ${datasetId} for line ${lineRef}.`);
+            } else {
+                return res.status(404).send(`No timetable dataset found for line ${lineRef}`);
+            }
+        }
+
+        // Now, use the dataset ID to get the actual data URL
+        console.log(`Fetching metadata for dataset ${datasetId}`);
+        const datasetUrl = `https://data.bus-data.dft.gov.uk/api/v1/dataset/${datasetId}/?api_key=${apiKey}`;
+        const datasetResponse = await axios.get(datasetUrl, { headers: { 'User-Agent': 'BusTracker/1.0' } });
+        
+        const downloadUrl = datasetResponse.data.url;
+        console.log(`Downloading timetable from: ${downloadUrl}`);
+        const timetableResponse = await axios.get(downloadUrl, { headers: { 'User-Agent': 'BusTracker/1.0' } });
+
+        cache[timetableCacheKey] = { data: timetableResponse.data, timestamp: Date.now() };
+        res.send(timetableResponse.data);
+
+    } catch (error) {
+        console.error(`Error fetching timetable for line ${lineRef}:`, error.message);
+        res.status(500).send(`Error fetching timetable for line ${lineRef}`);
+    }
+});
+
 // --- Static File Serving & Server Start ---
 
 // Disable caching for all static files
