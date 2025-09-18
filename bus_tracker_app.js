@@ -75,6 +75,46 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
     return (toDegrees(Math.atan2(y, x)) + 360) % 360;
 }
 
+function predictPosition(lat, lon, bearing, speedMph, timeSeconds) {
+    if (speedMph < 1 || bearing === null) {
+        return { lat, lon };
+    }
+    const R = 3958.8; // Earth's radius in miles
+    const distance = (speedMph * timeSeconds) / 3600; // distance in miles
+
+    const latRad = toRad(lat);
+    const lonRad = toRad(lon);
+    const bearingRad = toRad(bearing);
+
+    const lat2Rad = Math.asin(Math.sin(latRad) * Math.cos(distance / R) +
+                           Math.cos(latRad) * Math.sin(distance / R) * Math.cos(bearingRad));
+    const lon2Rad = lonRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distance / R) * Math.cos(latRad),
+                                     Math.cos(distance / R) - Math.sin(latRad) * Math.sin(lat2Rad));
+
+    return { lat: toDegrees(lat2Rad), lon: toDegrees(lon2Rad) };
+}
+
+function getPointBehind(lat, lon, bearing, distanceMiles) {
+    if (bearing === null) {
+        return { lat, lon };
+    }
+    // To go backward, we add 180 degrees to the bearing.
+    const reverseBearing = (bearing + 180) % 360;
+    
+    const R = 3958.8; // Earth's radius in miles
+
+    const latRad = toRad(lat);
+    const lonRad = toRad(lon);
+    const bearingRad = toRad(reverseBearing);
+
+    const lat2Rad = Math.asin(Math.sin(latRad) * Math.cos(distanceMiles / R) +
+                           Math.cos(latRad) * Math.sin(distanceMiles / R) * Math.cos(bearingRad));
+    const lon2Rad = lonRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distanceMiles / R) * Math.cos(latRad),
+                                     Math.cos(distanceMiles / R) - Math.sin(latRad) * Math.sin(lat2Rad));
+
+    return { lat: toDegrees(lat2Rad), lon: toDegrees(lon2Rad) };
+}
+
 function findNearbyBusStop(busLat, busLon) {
     for (const stopCode in appState.busStops) {
         const stop = appState.busStops[stopCode];
@@ -304,12 +344,13 @@ async function fetchData() {
             if (bus) { // Existing bus
                 const dist = getDistance(bus.lat, bus.lon, newLat, newLon);
                 let movementState = 'stationary';
+                const timeDiffSeconds = (recordedAtTime.getTime() - bus.lastUpdateTime) / 1000;
                 
-                if (dist > 0.005) { // ~8 meters, bus is moving
+                if (dist > 0.005 && timeDiffSeconds > 0) { // ~8 meters, bus is moving
                     movementState = 'moved';
                     bus.lastMovedTime = pollTime;
-                    const timeDiffHours = (recordedAtTime.getTime() - bus.lastUpdateTime) / 3600000;
-                    const currentSpeed = timeDiffHours > 0 ? dist / timeDiffHours : 0;
+                    const timeDiffHours = timeDiffSeconds / 3600;
+                    const currentSpeed = dist / timeDiffHours;
                     bus.speedHistory.push(currentSpeed);
                     if (bus.speedHistory.length > config.speedAvgSize) bus.speedHistory.shift();
                     bus.displaySpeed = bus.speedHistory.reduce((a, b) => a + b, 0) / bus.speedHistory.length;
@@ -318,17 +359,30 @@ async function fetchData() {
                     if (bearingFromApi) {
                         bus.bearing = parseFloat(bearingFromApi);
                     } else {
-                        // Fallback to calculating bearing if not provided
                         bus.bearing = calculateBearing(bus.lat, bus.lon, newLat, newLon);
                     }
-                } else { // Bus is stationary
-                    if (!bus.lastMovedTime) { // Initialize if it doesn't exist
+
+                    // Predict the future position based on the time to the next update.
+                    const predictedPosition = predictPosition(newLat, newLon, bus.bearing, currentSpeed, timeDiffSeconds);
+                    
+                    // Animate to the predicted position over the exact time delta.
+                    bus.marker.slideTo([predictedPosition.lat, predictedPosition.lon], {
+                        duration: timeDiffSeconds * 1000,
+                        keepAtCenter: false,
+                    });
+
+                } else { // Bus is stationary or update is old
+                    if (!bus.lastMovedTime) {
                         bus.lastMovedTime = bus.lastPollTime;
                     }
+                    // If the bus has stopped, we let the current animation finish naturally.
+                    // The staleBusChecker will eventually snap it to the final position if needed.
+                    // We just decay the speed for the UI.
                     bus.displaySpeed *= 0.9; // Decay speed
                     if (bus.displaySpeed < 1) bus.displaySpeed = 0;
                 }
                 
+                // ALWAYS update the internal state to the latest actual position
                 bus.lat = newLat;
                 bus.lon = newLon;
                 bus.lastUpdateTime = recordedAtTime.getTime();
@@ -346,35 +400,46 @@ async function fetchData() {
                 }
 
                 bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, appState.followedBus === itemIdentifier, bus.isNearStop));
-                bus.marker.setLatLng([newLat, newLon]); // Directly set position
                 if (appState.followedBus === itemIdentifier) {
-                    appState.map.setView([newLat, newLon], appState.map.getZoom());
+                    // Gently pan the map to keep the bus in view, but don't force center
+                    appState.map.panTo([newLat, newLon], { animate: true, duration: 1.0 });
                 }
                 updatePopupContent(bus, movementState, { distance: dist });
             } else { // New bus
-                const marker = L.marker([newLat, newLon], { 
+                const bearingFromApi = mvj.getElementsByTagName("Bearing")[0]?.textContent;
+                const bearing = bearingFromApi ? parseFloat(bearingFromApi) : null;
+                
+                // Spawn the bus slightly behind its actual position to animate it in
+                const spawnPoint = getPointBehind(newLat, newLon, bearing, 0.02); // approx 32 meters
+
+                const marker = L.marker([spawnPoint.lat, spawnPoint.lon], { 
                     icon: getIconByZoom('bus', appState.map.getZoom(), lineRef, false, !!nearbyStop), 
                     label: lineRef
                 }).addTo(appState.map);
 
-                const bearingFromApi = mvj.getElementsByTagName("Bearing")[0]?.textContent;
                 appState.buses[itemIdentifier] = {
                     marker, itemIdentifier,
                     lineRef: lineRef,
                     vehicleRef: mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????',
                     destinationName: mvj.getElementsByTagName("DestinationName")[0]?.textContent || 'N/A',
-                    lat: newLat, lon: newLon,
+                    lat: newLat, lon: newLon, // Store the ACTUAL position
                     lastUpdateTime: recordedAtTime.getTime(),
                     lastPollTime: pollTime,
                     lastMovedTime: pollTime,
-                    speedHistory: [], displaySpeed: 0, bearing: bearingFromApi ? parseFloat(bearingFromApi) : null,
+                    speedHistory: [], displaySpeed: 0, bearing: bearing,
                     atStopSince: null, currentStopCode: null,
                     isNearStop: !!nearbyStop,
                 };
+                
+                // Animate the marker to its actual starting position
+                marker.slideTo([newLat, newLon], {
+                    duration: 2000,
+                    keepAtCenter: false,
+                });
+
                 marker.bindPopup('');
                 updatePopupContent(appState.buses[itemIdentifier], 'new');
                 marker.on('click', () => handleBusClick(itemIdentifier));
-                
             }
         });
 
@@ -402,44 +467,28 @@ async function fetchData() {
     }
 }
 
-function startPredictiveTracking() {
-    let lastFrameTime = performance.now();
-    const PREDICTION_TIMEOUT_MS = 15000; // Stop predicting after 15s of no data
+function startStaleBusChecker() {
+    const STALE_TIMEOUT_MS = 15000;
+    const CHECK_INTERVAL_MS = 2000;
 
-    function frame(currentTime) {
-        /*
-        const deltaMs = currentTime - lastFrameTime;
-        lastFrameTime = currentTime;
-
+    setInterval(() => {
+        const now = Date.now();
         for (const key in appState.buses) {
             const bus = appState.buses[key];
-            
-            const timeSinceLastUpdate = Date.now() - bus.lastUpdateTime;
+            const timeSinceLastUpdate = now - bus.lastPollTime;
 
-            // Only predict if the bus is moving, we have a bearing, AND the data is recent
-            if (bus.displaySpeed > 0.1 && bus.bearing !== null && timeSinceLastUpdate < PREDICTION_TIMEOUT_MS) {
-                const distance = (bus.displaySpeed * (deltaMs / 3600000)); // distance in miles
-                
-                const R = 3958.8; // Earth's radius in miles
-                const latRad = toRad(bus.lat);
-                const lonRad = toRad(bus.lon);
-                const bearingRad = toRad(bus.bearing);
-
-                const lat2Rad = Math.asin(Math.sin(latRad) * Math.cos(distance / R) +
-                                       Math.cos(latRad) * Math.sin(distance / R) * Math.cos(bearingRad));
-                const lon2Rad = lonRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distance / R) * Math.cos(latRad),
-                                                 Math.cos(distance / R) - Math.sin(latRad) * Math.sin(lat2Rad));
-                
-                bus.lat = toDegrees(lat2Rad);
-                bus.lon = toDegrees(lon2Rad);
-                
-                bus.marker.setLatLng([bus.lat, bus.lon]);
+            if (timeSinceLastUpdate > STALE_TIMEOUT_MS) {
+                // If the marker is not at its actual last known position, slide it there.
+                const currentPos = bus.marker.getLatLng();
+                if (getDistance(currentPos.lat, currentPos.lng, bus.lat, bus.lon) > 0.001) {
+                     console.log(`Bus ${bus.vehicleRef} is stale. Snapping to actual position.`);
+                    bus.marker.slideTo([bus.lat, bus.lon], {
+                        duration: 1000 // A gentle slide to the final spot
+                    });
+                }
             }
         }
-        */
-        requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
+    }, CHECK_INTERVAL_MS);
 }
 
 function updateBusList() {
@@ -484,8 +533,8 @@ function init() {
     setupEventListeners();
     fetchBusStops();
     fetchData();
-    startPredictiveTracking();
     startAutoUpdate();
+    startStaleBusChecker();
 }
 
 function setupEventListeners() {
