@@ -362,11 +362,8 @@ async function fetchData() {
                         bus.bearing = calculateBearing(bus.lat, bus.lon, newLat, newLon);
                     }
 
-                    // Predict the future position based on the time to the next update.
-                    const predictedPosition = predictPosition(newLat, newLon, bus.bearing, currentSpeed, timeDiffSeconds);
-                    
-                    // Animate to the predicted position over the exact time delta.
-                    bus.marker.slideTo([predictedPosition.lat, predictedPosition.lon], {
+                    // Animate to the new, actual position over the exact time delta.
+                    bus.marker.slideTo([newLat, newLon], {
                         duration: timeDiffSeconds * 1000,
                         keepAtCenter: false,
                     });
