@@ -69,11 +69,29 @@ function findNearbyBusStop(busLat, busLon) {
     return null;
 }
 
+function simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash;
+}
+
+function getColorFromLineRef(lineRef) {
+    const hash = simpleHash(lineRef);
+    const hue = Math.abs(hash % 360);
+    return `hsl(${hue}, 70%, 50%)`;
+}
+
 // --- Icon & UI ---
 const createIcon = (html, className, size) => L.divIcon({ html, className, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 
-function createBusIcon(size, label, highlighted = false, isNearStop = false) {
-    const html = `<div class="bus-icon-container"><i class="fa fa-bus"></i><span class="bus-label">${label}</span></div>`;
+function createBusIcon(size, label, color, highlighted = false, isNearStop = false) {
+    const gradient = `radial-gradient(circle, ${color} 0%, ${color} 50%, rgba(0,0,0,0) 70%)`;
+    const style = `background: ${gradient}; opacity: 0.8;`;
+    const html = `<div class="bus-icon-container" style="${style}"><i class="fa fa-bus"></i><span class="bus-label">${label}</span></div>`;
     return createIcon(html, `bus-icon size-${size} ${highlighted ? 'highlight' : ''} ${isNearStop ? 'nearby' : ''}`, size);
 }
 
@@ -81,7 +99,8 @@ function getIconByZoom(type, zoom, label, highlighted = false, isNearStop = fals
     const levels = config.zoomLevels[type === 'bus' ? 'busIcon' : 'busStopIcon'];
     const size = zoom < levels.small ? 40 : zoom < levels.medium ? 64 : 96;
     if (type === 'bus') {
-        return createBusIcon(size, label, highlighted, isNearStop);
+        const color = getColorFromLineRef(label);
+        return createBusIcon(size, label, color, highlighted, isNearStop);
     } else {
         return createIcon('<i class="fa fa-dot-circle-o"></i>', `bus-stop-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
     }
