@@ -148,7 +148,7 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     if (movementState === 'moved') indicatorClass = 'flash-green';
     if (movementState === 'stationary') indicatorClass = 'flash-red';
     
-    const secondsSinceUpdate = Math.round((Date.now() - bus.lastUpdateTime) / 1000);
+    const secondsSinceUpdate = Math.round((Date.now() - (bus.lastMovedTime || bus.lastPollTime)) / 1000);
     const displaySeconds = Math.min(secondsSinceUpdate, 999);
     const shadowColor = getCounterColor(displaySeconds);
     const shadowStyle = `text-shadow: -1px -1px 0 ${shadowColor}, 1px -1px 0 ${shadowColor}, -1px 1px 0 ${shadowColor}, 1px 1px 0 ${shadowColor};`;
@@ -158,7 +158,10 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     const speedColor = getSpeedColor(bus.displaySpeed);
     const speedHTML = `<span class="speed-value" style="background-color: ${speedColor};">${bus.displaySpeed.toFixed(1)}</span> mph`;
     
-    const topLineHTML = `<div class="top-line">${indicatorHTML} ${speedHTML}</div>`;
+    const bearing = bus.bearing !== null ? bus.bearing : 0;
+    const compassHTML = `<div class="compass-container"><div class="north-indicator">N</div><div class="compass-needle" style="--bearing: ${bearing}deg;"></div></div>`;
+
+    const topLineHTML = `<div class="top-line">${indicatorHTML} ${speedHTML} ${compassHTML}</div>`;
     const distText = debugInfo.distance ? `<b>Dist:</b> ${debugInfo.distance.toFixed(5)} mi<br>` : '';
     
     const content = `
@@ -272,7 +275,7 @@ async function fetchBusStops() {
 }
 
 async function fetchData() {
-    
+    const pollTime = Date.now();
     try {
         const response = await fetch(`/api?boundingBox=${config.boundingBox}`);
         if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -304,6 +307,7 @@ async function fetchData() {
                 
                 if (dist > 0.005) { // ~8 meters, bus is moving
                     movementState = 'moved';
+                    bus.lastMovedTime = pollTime;
                     const timeDiffHours = (recordedAtTime.getTime() - bus.lastUpdateTime) / 3600000;
                     const currentSpeed = timeDiffHours > 0 ? dist / timeDiffHours : 0;
                     bus.speedHistory.push(currentSpeed);
@@ -318,6 +322,9 @@ async function fetchData() {
                         bus.bearing = calculateBearing(bus.lat, bus.lon, newLat, newLon);
                     }
                 } else { // Bus is stationary
+                    if (!bus.lastMovedTime) { // Initialize if it doesn't exist
+                        bus.lastMovedTime = bus.lastPollTime;
+                    }
                     bus.displaySpeed *= 0.9; // Decay speed
                     if (bus.displaySpeed < 1) bus.displaySpeed = 0;
                 }
@@ -325,6 +332,7 @@ async function fetchData() {
                 bus.lat = newLat;
                 bus.lon = newLon;
                 bus.lastUpdateTime = recordedAtTime.getTime();
+                bus.lastPollTime = pollTime;
                 bus.isNearStop = !!nearbyStop;
 
                 if (nearbyStop) {
@@ -357,6 +365,8 @@ async function fetchData() {
                     destinationName: mvj.getElementsByTagName("DestinationName")[0]?.textContent || 'N/A',
                     lat: newLat, lon: newLon,
                     lastUpdateTime: recordedAtTime.getTime(),
+                    lastPollTime: pollTime,
+                    lastMovedTime: pollTime,
                     speedHistory: [], displaySpeed: 0, bearing: bearingFromApi ? parseFloat(bearingFromApi) : null,
                     atStopSince: null, currentStopCode: null,
                     isNearStop: !!nearbyStop,
@@ -455,25 +465,6 @@ function startAutoUpdate() {
     appState.fetchIntervalId = setInterval(fetchData, appState.updateInterval);
 }
 
-function updateHeartCounters() {
-    for (const key in appState.buses) {
-        const bus = appState.buses[key];
-        if (bus.marker.isPopupOpen()) {
-            const popupElement = bus.marker.getPopup().getElement();
-            if (popupElement) {
-                const counter = popupElement.querySelector('.heart-counter');
-                if (counter) {
-                    const secondsSinceUpdate = Math.round((Date.now() - bus.lastUpdateTime) / 1000);
-                    const displaySeconds = Math.min(secondsSinceUpdate, 999);
-                    counter.textContent = displaySeconds;
-                    const shadowColor = getCounterColor(displaySeconds);
-                    counter.style.textShadow = `-1px -1px 0 ${shadowColor}, 1px -1px 0 ${shadowColor}, -1px 1px 0 ${shadowColor}, 1px 1px 0 ${shadowColor}`;
-                }
-            }
-        }
-    }
-}
-
 function init() {
     Object.assign(ui, {
         busList: document.getElementById('bus-list'),
@@ -495,7 +486,6 @@ function init() {
     fetchData();
     startPredictiveTracking();
     startAutoUpdate();
-    appState.heartbeatIntervalId = setInterval(updateHeartCounters, 1000);
 }
 
 function setupEventListeners() {
