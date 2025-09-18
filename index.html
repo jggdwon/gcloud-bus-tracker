@@ -79,6 +79,47 @@
         color: #aee6ff;
     }
 
+    /* Debug Heart Indicator */
+    .status-line {
+        min-height: 18px; /* Prevent layout shift */
+    }
+    .tracking-text {
+        display: flex;
+        align-items: center;
+        gap: 16px; /* Even more space */
+    }
+    .update-heart {
+        display: inline-block;
+        position: relative; /* For pseudo-elements */
+        width: 8px;
+        height: 8px;
+        background-color: #555;
+        transform: rotate(-45deg);
+        filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.6));
+        flex-shrink: 0; /* Prevent heart from shrinking */
+    }
+    .speed-value {
+        padding: 2px 6px;
+        border-radius: 5px;
+        color: #1a202c;
+        font-weight: bold;
+    }
+    .flash-green {
+        animation: flash-green-anim 1.5s ease-out;
+    }
+    .flash-red {
+        animation: flash-red-anim 1.5s ease-out;
+    }
+    @keyframes flash-green-anim {
+        0% { background-color: #76ff03; filter: drop-shadow(0 0 4px #76ff03); }
+        100% { background-color: #555; filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.6)); }
+    }
+    @keyframes flash-red-anim {
+        0% { background-color: #ff5252; filter: drop-shadow(0 0 4px #ff5252); }
+        100% { background-color: #555; filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.6)); }
+    }
+
+
     /* Tab Styles */
     .tab-nav {
       display: flex;

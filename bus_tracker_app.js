@@ -26,6 +26,7 @@ const appState = {
     routeLayer: L.layerGroup(),
     fetchIntervalId: null,
     updateInterval: 2000,
+    isPanningProgrammatically: false,
 };
 
 // --- DOM Elements ---
@@ -40,13 +41,15 @@ function initMap() {
     }).addTo(appState.map);
     appState.map.on('zoomend', handleMapZoom);
     appState.map.on('click', unfollowBus);
-    // appState.map.on('dragstart', unfollowBus);
-    // appState.map.on('zoomstart', unfollowBus);
+    appState.map.on('dragstart', unfollowBus);
+    appState.map.on('zoomstart', unfollowBus);
     appState.map.on('keydown', unfollowBus);
     appState.map.on('popupopen', function(e) {
+        appState.isPanningProgrammatically = true;
         var px = appState.map.project(e.popup._latlng); // find the pixel location on the map where the popup anchor is
         px.y -= e.popup._container.clientHeight/2; // find the height of the popup container, divide by 2, subtract from the Y axis
         appState.map.panTo(appState.map.unproject(px),{animate: true}); // pan to new center
+        setTimeout(() => { appState.isPanningProgrammatically = false; }, 1200);
     });
 }
 
@@ -59,6 +62,17 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(rlat1) * Math.cos(rlat2) * Math.sin(dLon/2) * Math.sin(dLon/2);
     return 2 * R * Math.asin(Math.sqrt(a));
 };
+
+const toDegrees = (rad) => rad * 180 / Math.PI;
+
+function calculateBearing(lat1, lon1, lat2, lon2) {
+    const dLon = toRad(lon2 - lon1);
+    const lat1Rad = toRad(lat1);
+    const lat2Rad = toRad(lat2);
+    const y = Math.sin(dLon) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+    return (toDegrees(Math.atan2(y, x)) + 360) % 360;
+}
 
 function findNearbyBusStop(busLat, busLon) {
     for (const stopCode in appState.busStops) {
@@ -98,16 +112,23 @@ function createBusIcon(size, label, color, highlighted = false, isNearStop = fal
 
 function getIconByZoom(type, zoom, label, highlighted = false, isNearStop = false) {
     const levels = config.zoomLevels[type === 'bus' ? 'busIcon' : 'busStopIcon'];
-    const size = zoom < levels.small ? 40 : zoom < levels.medium ? 64 : 96;
     if (type === 'bus') {
+        const size = zoom < levels.small ? 40 : zoom < levels.medium ? 64 : 96;
         const color = getColorFromLineRef(label);
         return createBusIcon(size, label, color, highlighted, isNearStop);
     } else {
+        const size = zoom < levels.small ? 20 : zoom < levels.medium ? 32 : 48;
         return createIcon('<i class="fa fa-dot-circle-o"></i>', `bus-stop-icon size-${size} ${highlighted ? 'highlight' : ''}`, size);
     }
 }
 
-function updatePopupContent(bus) {
+function getSpeedColor(speed) {
+    const clampedSpeed = Math.min(Math.max(speed, 0), 20); // Clamp speed between 0 and 20
+    const hue = 39 + (120 - 39) * (clampedSpeed / 20); // Interpolate hue from orange (39) to green (120)
+    return `hsl(${hue}, 100%, 50%)`;
+}
+
+function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     const isTracked = appState.followedBus === bus.itemIdentifier;
     let atStopText = '';
     if (bus.currentStopCode && appState.busStops[bus.currentStopCode]) {
@@ -116,9 +137,26 @@ function updatePopupContent(bus) {
         atStopText = `<div class="at-stop-info"><b>At Stop:</b> ${stopName} <i class="fa fa-map-pin"></i><br><b>Time at stop:</b> ${secondsAtStop}s</div>`;
     }
 
-    const trackingText = isTracked ? '<div class="tracking-text">TRACKING</div>' : '';
-    const speedText = `<b>Speed:</b> ${bus.displaySpeed.toFixed(1)} mph<br>`;
-    bus.marker.getPopup().setContent(`${trackingText}${atStopText}${speedText}<b>Line:</b> ${bus.lineRef}<br><b>Bus:</b> ${bus.vehicleRef}<br><b>Destination:</b> ${bus.destinationName}`);
+    let indicatorClass = '';
+    if (movementState === 'moved') indicatorClass = 'flash-green';
+    if (movementState === 'stationary') indicatorClass = 'flash-red';
+    const indicatorHTML = `<span class="update-heart ${indicatorClass}"></span>`;
+
+    const trackingDiv = isTracked ? `<div class="tracking-text">${indicatorHTML} TRACKING</div>` : `<div class="status-line">${indicatorHTML}</div>`;
+    const speedColor = getSpeedColor(bus.displaySpeed);
+    const speedText = `<b>Speed:</b> <span class="speed-value" style="background-color: ${speedColor};">${bus.displaySpeed.toFixed(1)}</span> mph<br>`;
+    const distText = debugInfo.distance ? `<b>Dist:</b> ${debugInfo.distance.toFixed(5)} mi<br>` : '';
+    
+    const content = `
+        ${trackingDiv}
+        ${atStopText}
+        ${speedText}
+        ${distText}
+        <b>Line:</b> ${bus.lineRef}<br>
+        <b>Bus:</b> ${bus.vehicleRef}<br>
+        <b>Destination:</b> ${bus.destinationName}
+    `;
+    bus.marker.getPopup().setContent(content);
 }
 
 function showErrorPopup(error) {
@@ -143,6 +181,9 @@ function handleMapZoom() {
 }
 
 function unfollowBus() {
+    if (appState.isPanningProgrammatically) {
+        return;
+    }
     if (appState.followedBus && appState.buses[appState.followedBus]) {
         const bus = appState.buses[appState.followedBus];
         bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, false, bus.isNearStop));
@@ -158,7 +199,9 @@ function handleBusClick(itemIdentifier) {
         appState.followedBus = itemIdentifier;
         const bus = appState.buses[itemIdentifier];
         bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, true, bus.isNearStop));
+        appState.isPanningProgrammatically = true;
         appState.map.setView(bus.marker.getLatLng(), 18);
+        setTimeout(() => { appState.isPanningProgrammatically = false; }, 1200);
     }
     ui.sidebar.classList.remove('active');
 }
@@ -174,8 +217,10 @@ function handleListClick(event) {
     } else if (type === 'stop') {
         const marker = appState.busStopMarkers[id];
         if (marker) {
+            appState.isPanningProgrammatically = true;
             appState.map.setView(marker.getLatLng(), 17);
             marker.openPopup();
+            setTimeout(() => { appState.isPanningProgrammatically = false; }, 1200);
         }
     }
     ui.sidebar.classList.remove('active');
@@ -242,12 +287,23 @@ async function fetchData() {
 
             if (bus) { // Existing bus
                 const dist = getDistance(bus.lat, bus.lon, newLat, newLon);
+                let movementState = 'stationary';
+                
                 if (dist > 0.005) { // ~8 meters, bus is moving
+                    movementState = 'moved';
                     const timeDiffHours = (recordedAtTime.getTime() - bus.lastUpdateTime) / 3600000;
                     const currentSpeed = timeDiffHours > 0 ? dist / timeDiffHours : 0;
                     bus.speedHistory.push(currentSpeed);
                     if (bus.speedHistory.length > config.speedAvgSize) bus.speedHistory.shift();
                     bus.displaySpeed = bus.speedHistory.reduce((a, b) => a + b, 0) / bus.speedHistory.length;
+                    
+                    const bearingFromApi = mvj.getElementsByTagName("Bearing")[0]?.textContent;
+                    if (bearingFromApi) {
+                        bus.bearing = parseFloat(bearingFromApi);
+                    } else {
+                        // Fallback to calculating bearing if not provided
+                        bus.bearing = calculateBearing(bus.lat, bus.lon, newLat, newLon);
+                    }
                 } else { // Bus is stationary
                     bus.displaySpeed *= 0.9; // Decay speed
                     if (bus.displaySpeed < 1) bus.displaySpeed = 0;
@@ -269,14 +325,18 @@ async function fetchData() {
                 }
 
                 bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, appState.followedBus === itemIdentifier, bus.isNearStop));
-                bus.marker.slideTo([newLat, newLon], { duration: 3000 });
-                updatePopupContent(bus);
+                bus.marker.setLatLng([newLat, newLon]); // Directly set position
+                if (appState.followedBus === itemIdentifier) {
+                    appState.map.setView([newLat, newLon], appState.map.getZoom());
+                }
+                updatePopupContent(bus, movementState, { distance: dist });
             } else { // New bus
                 const marker = L.marker([newLat, newLon], { 
                     icon: getIconByZoom('bus', appState.map.getZoom(), lineRef, false, !!nearbyStop), 
                     label: lineRef
                 }).addTo(appState.map);
 
+                const bearingFromApi = mvj.getElementsByTagName("Bearing")[0]?.textContent;
                 appState.buses[itemIdentifier] = {
                     marker, itemIdentifier,
                     lineRef: lineRef,
@@ -284,18 +344,14 @@ async function fetchData() {
                     destinationName: mvj.getElementsByTagName("DestinationName")[0]?.textContent || 'N/A',
                     lat: newLat, lon: newLon,
                     lastUpdateTime: recordedAtTime.getTime(),
-                    speedHistory: [], displaySpeed: 0,
+                    speedHistory: [], displaySpeed: 0, bearing: bearingFromApi ? parseFloat(bearingFromApi) : null,
                     atStopSince: null, currentStopCode: null,
                     isNearStop: !!nearbyStop,
                 };
                 marker.bindPopup('');
-                updatePopupContent(appState.buses[itemIdentifier]);
+                updatePopupContent(appState.buses[itemIdentifier], 'new');
                 marker.on('click', () => handleBusClick(itemIdentifier));
-                marker.on('slideend', (e) => {
-                    if (appState.followedBus === itemIdentifier) {
-                        appState.map.setView(e.target.getLatLng(), appState.map.getZoom(), { animate: true });
-                    }
-                });
+                
             }
         });
 
@@ -319,6 +375,46 @@ async function fetchData() {
     }
 }
 
+function startPredictiveTracking() {
+    let lastFrameTime = performance.now();
+    const PREDICTION_TIMEOUT_MS = 15000; // Stop predicting after 15s of no data
+
+    function frame(currentTime) {
+        /*
+        const deltaMs = currentTime - lastFrameTime;
+        lastFrameTime = currentTime;
+
+        for (const key in appState.buses) {
+            const bus = appState.buses[key];
+            
+            const timeSinceLastUpdate = Date.now() - bus.lastUpdateTime;
+
+            // Only predict if the bus is moving, we have a bearing, AND the data is recent
+            if (bus.displaySpeed > 0.1 && bus.bearing !== null && timeSinceLastUpdate < PREDICTION_TIMEOUT_MS) {
+                const distance = (bus.displaySpeed * (deltaMs / 3600000)); // distance in miles
+                
+                const R = 3958.8; // Earth's radius in miles
+                const latRad = toRad(bus.lat);
+                const lonRad = toRad(bus.lon);
+                const bearingRad = toRad(bus.bearing);
+
+                const lat2Rad = Math.asin(Math.sin(latRad) * Math.cos(distance / R) +
+                                       Math.cos(latRad) * Math.sin(distance / R) * Math.cos(bearingRad));
+                const lon2Rad = lonRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distance / R) * Math.cos(latRad),
+                                                 Math.cos(distance / R) - Math.sin(latRad) * Math.sin(lat2Rad));
+                
+                bus.lat = toDegrees(lat2Rad);
+                bus.lon = toDegrees(lon2Rad);
+                
+                bus.marker.setLatLng([bus.lat, bus.lon]);
+            }
+        }
+        */
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+}
+
 function updateBusList() {
     const listFragment = document.createDocumentFragment();
     Object.values(appState.buses).sort((a, b) => a.lineRef.localeCompare(b.lineRef)).forEach(bus => {
@@ -329,7 +425,10 @@ function updateBusList() {
         listItem.innerHTML = `<b>${bus.lineRef}</b> to ${bus.destinationName} (ID: ${bus.vehicleRef.slice(-4)})`;
         listFragment.appendChild(listItem);
     });
-    ui.busList.innerHTML = '';
+    // Clear the list more efficiently
+    while (ui.busList.firstChild) {
+        ui.busList.removeChild(ui.busList.firstChild);
+    }
     ui.busList.appendChild(listFragment);
 }
 
@@ -358,6 +457,7 @@ function init() {
     setupEventListeners();
     fetchBusStops();
     fetchData();
+    startPredictiveTracking();
     startAutoUpdate();
 }
 
