@@ -1,2 +1,3 @@
 WARNING: BODS_API_KEY environment variable not set. Using fallback key.
 Server listening on port 9000
+Fetching fresh bus stops data.

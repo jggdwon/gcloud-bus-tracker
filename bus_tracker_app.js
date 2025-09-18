@@ -40,8 +40,9 @@ function initMap() {
     }).addTo(appState.map);
     appState.map.on('zoomend', handleMapZoom);
     appState.map.on('click', unfollowBus);
-    appState.map.on('dragstart', unfollowBus);
-    appState.map.on('zoomstart', unfollowBus);
+    // appState.map.on('dragstart', unfollowBus);
+    // appState.map.on('zoomstart', unfollowBus);
+    appState.map.on('keydown', unfollowBus);
     appState.map.on('popupopen', function(e) {
         var px = appState.map.project(e.popup._latlng); // find the pixel location on the map where the popup anchor is
         px.y -= e.popup._container.clientHeight/2; // find the height of the popup container, divide by 2, subtract from the Y axis
@@ -290,9 +291,9 @@ async function fetchData() {
                 marker.bindPopup('');
                 updatePopupContent(appState.buses[itemIdentifier]);
                 marker.on('click', () => handleBusClick(itemIdentifier));
-                marker.on('slidemove', (e) => {
+                marker.on('slideend', (e) => {
                     if (appState.followedBus === itemIdentifier) {
-                        appState.map.panTo(e.latlng, { animate: false });
+                        appState.map.setView(e.target.getLatLng(), appState.map.getZoom(), { animate: true });
                     }
                 });
             }
