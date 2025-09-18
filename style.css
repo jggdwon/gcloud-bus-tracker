@@ -207,10 +207,10 @@ html, body {
 
 .heart-counter {
     position: absolute;
-    top: 0%;
-    left: 50%;
-    transform: translate(-50%, -100%) rotate(45deg);
-    color: white;
+    top: 0;
+    left: 150%;
+    transform: translate(-50%, -150%) rotate(45deg);
+    color: black;
     font-size: 8px;
     font-weight: bold;
 }

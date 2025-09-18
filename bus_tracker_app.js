@@ -25,6 +25,7 @@ const appState = {
     busStopsLayer: L.layerGroup(),
     routeLayer: L.layerGroup(),
     fetchIntervalId: null,
+    heartbeatIntervalId: null,
     updateInterval: 2000,
     isPanningProgrammatically: false,
 };
@@ -128,6 +129,12 @@ function getSpeedColor(speed) {
     return `hsl(${hue}, 100%, 50%)`;
 }
 
+function getCounterColor(seconds) {
+    const clampedSeconds = Math.min(Math.max(seconds, 0), 60);
+    const hue = 120 - (120 * (clampedSeconds / 60)); // 120 is green, 0 is red
+    return `hsl(${hue}, 100%, 50%)`;
+}
+
 function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     const isTracked = appState.followedBus === bus.itemIdentifier;
     let atStopText = '';
@@ -140,7 +147,13 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     let indicatorClass = '';
     if (movementState === 'moved') indicatorClass = 'flash-green';
     if (movementState === 'stationary') indicatorClass = 'flash-red';
-    const indicatorHTML = `<span class="update-heart ${indicatorClass}"><span class="heart-counter">0</span></span>`;
+    
+    const secondsSinceUpdate = Math.round((Date.now() - bus.lastUpdateTime) / 1000);
+    const displaySeconds = Math.min(secondsSinceUpdate, 999);
+    const shadowColor = getCounterColor(displaySeconds);
+    const shadowStyle = `text-shadow: -1px -1px 0 ${shadowColor}, 1px -1px 0 ${shadowColor}, -1px 1px 0 ${shadowColor}, 1px 1px 0 ${shadowColor};`;
+
+    const indicatorHTML = `<span class="update-heart ${indicatorClass}"><span class="heart-counter" style="${shadowStyle}">${displaySeconds}</span></span>`;
 
     const speedColor = getSpeedColor(bus.displaySpeed);
     const speedHTML = `<span class="speed-value" style="background-color: ${speedColor};">${bus.displaySpeed.toFixed(1)}</span> mph`;
@@ -370,6 +383,10 @@ async function fetchData() {
             clearInterval(appState.fetchIntervalId);
             appState.fetchIntervalId = null;
         }
+        if (appState.heartbeatIntervalId) {
+            clearInterval(appState.heartbeatIntervalId);
+            appState.heartbeatIntervalId = null;
+        }
     } finally {
         
     }
@@ -447,7 +464,10 @@ function updateHeartCounters() {
                 const counter = popupElement.querySelector('.heart-counter');
                 if (counter) {
                     const secondsSinceUpdate = Math.round((Date.now() - bus.lastUpdateTime) / 1000);
-                    counter.textContent = secondsSinceUpdate;
+                    const displaySeconds = Math.min(secondsSinceUpdate, 999);
+                    counter.textContent = displaySeconds;
+                    const shadowColor = getCounterColor(displaySeconds);
+                    counter.style.textShadow = `-1px -1px 0 ${shadowColor}, 1px -1px 0 ${shadowColor}, -1px 1px 0 ${shadowColor}, 1px 1px 0 ${shadowColor}`;
                 }
             }
         }
@@ -475,7 +495,7 @@ function init() {
     fetchData();
     startPredictiveTracking();
     startAutoUpdate();
-    setInterval(updateHeartCounters, 1000);
+    appState.heartbeatIntervalId = setInterval(updateHeartCounters, 1000);
 }
 
 function setupEventListeners() {
