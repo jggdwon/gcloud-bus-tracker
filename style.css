@@ -1,57 +1,23 @@
+/* --- Base Styles --- */
 html, body {
   height: 100%;
   margin: 0;
   padding: 0;
-  font-family: sans-serif;
-  background-color: #1a1a1a;
-  color: #eee;
+  font-family: 'Inter', sans-serif;
+  background-color: #1a202c;
+  color: #e2e8f0;
+  overflow: hidden;
 }
 
 #app-container {
   height: 100%;
-}
-
-#sidebar {
-  width: 250px;
-  background-color: #2c2c2c;
-  padding: 20px;
-  border-right: 1px solid #444;
-}
-
-
-
-#bus-list {
-  list-style-type: none;
-  padding: 0;
-}
-
-#bus-list li {
-  cursor: pointer;
-  padding: 10px;
-  border-bottom: 1px solid #444;
-}
-
-#bus-list li:hover {
-  background-color: #444;
-}
-
-#bus-stop-list {
-  list-style-type: none;
-  padding: 0;
-}
-
-#bus-stop-list li {
-  cursor: pointer;
-  padding: 10px;
-  border-bottom: 1px solid #444;
-}
-
-#bus-stop-list li:hover {
-  background-color: #444;
+  position: relative;
 }
 
 #map {
-  flex-grow: 1;
+  height: 100%;
+  width: 100%;
+  z-index: 0;
 }
 
 .leaflet-layer,
@@ -61,158 +27,151 @@ html, body {
   filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
 }
 
-#update-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background-color: #555;
-  display: inline-block;
-  margin-left: 10px;
-}
-
-#update-indicator.loading {
-  background-color: #28a745;
-  animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.bus-icon.highlight {
-  background-color: #ffc107; /* yellow */
-}
-
-.bus-icon {
-  background-color: #337ab7;
-  border-radius: 50%;
-  color: white;
-  text-align: center;
-  line-height: 1;
-}
-
-.bus-icon i {
-  position: relative;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.size-20 {
-  width: 20px;
-  height: 20px;
-}
-
-.size-32 {
-  width: 32px;
-  height: 32px;
-}
-
-.size-48 {
-  width: 48px;
-  height: 48px;
-}
-
-.bus-stop-icon {
-  background-color: #dc3545; /* red */
-  border-radius: 50%;
-  color: white;
-  text-align: center;
-  line-height: 1;
-}
-
-.bus-stop-icon i {
-  position: relative;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.bus-stop-icon.highlight {
-  background-color: #ffc107; /* yellow */
-}
-
-.bus-icon.nearby {
-  filter: invert(100%);
-}
-
-.at-stop-info {
-  color: #ffc107; /* yellow */
-}
-
-.mobile-only {
-  display: none;
-}
-
+/* --- Mobile Styles --- */
 @media (max-width: 768px) {
-  #app-container {
-    position: relative;
-    height: 100%;
-  }
-
   #sidebar {
-    width: 80%;
-    left: 10%;
-    height: auto;
-    max-height: 50px;
-    border-right: none;
-    border-bottom: 1px solid #444;
+    width: 90%;
     position: absolute;
-    top: 10px;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(45, 55, 72, 0.8);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
     z-index: 1000;
-    overflow-y: hidden;
+    overflow: hidden;
+    max-height: 50px;
     transition: max-height 0.3s ease-in-out;
-    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   }
 
   #sidebar.active {
     max-height: 80vh;
-    overflow-y: auto;
   }
 
   #sidebar-content {
-    display: none;
-    padding-top: 50px;
-  }
-
-  #sidebar.active #sidebar-content {
-    display: block;
+    padding: 20px;
+    padding-top: 60px; /* Make space for the menu button */
   }
 
   #menu-toggle {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    width: 30px;
-    height: 22px;
+    width: 100%;
+    height: 50px;
     position: absolute;
-    top: 15px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: none;
+    top: 0;
+    left: 0;
+    background: transparent;
     border: none;
     cursor: pointer;
     padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1001;
   }
 
-  .mobile-only {
-    display: block;
+  .burger-icon {
+    width: 24px;
+    height: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
   }
 
-  #map {
-    height: 100%;
+  .burger-line {
+    width: 100%;
+    height: 2px;
+    background-color: #e2e8f0;
+    border-radius: 2px;
+  }
+  
+  h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  .tab-nav {
+    display: flex;
+    margin-bottom: 20px;
+    background-color: rgba(26, 32, 44, 0.5);
+    border-radius: 12px;
+    padding: 4px;
+  }
+
+  .tab-link {
+    flex-grow: 1;
+    padding: 10px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: #a0aec0;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .tab-link.active {
+    background-color: #48bb78;
+    color: #1a202c;
+  }
+
+  #bus-list, #bus-stop-list {
+    list-style-type: none;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  #bus-list li, #bus-stop-list li {
+    padding: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+
+  #bus-list li:hover, #bus-stop-list li:hover {
+    background-color: rgba(72, 187, 120, 0.1);
+  }
+  
+  .toggle-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
   }
 }
 
-.burger-line {
-  width: 100%;
-  height: 3px;
-  background-color: #eee;
-  border-radius: 2px;
+/* --- Popups --- */
+.leaflet-popup-content-wrapper {
+  background: #2d3748;
+  color: #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.leaflet-popup-content {
+  margin: 15px;
+  line-height: 1.6;
+}
+.leaflet-popup-tip {
+  background: #2d3748;
+}
+.leaflet-popup-content b {
+    color: #68d391;
+}
+.tracking-text {
+  color: #68d391;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  animation: pulse-green 2s infinite;
+}
+@keyframes pulse-green {
+  0%, 100% { color: #68d391; }
+  50% { color: #e2e8f0; }
 }
