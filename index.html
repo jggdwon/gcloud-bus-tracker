@@ -65,6 +65,8 @@
     .leaflet-popup-content {
       margin: 13px 19px;
       line-height: 1.4;
+      font-size: 1.7em; /* 70% bigger text */
+      font-weight: bold; /* Bolder text */
     }
     .leaflet-popup-tip-container {
         width: 40px;
@@ -80,23 +82,39 @@
     }
 
     /* Debug Heart Indicator */
-    .status-line {
-        min-height: 18px; /* Prevent layout shift */
-    }
-    .tracking-text {
+    .top-line {
         display: flex;
         align-items: center;
-        gap: 16px; /* Even more space */
+        gap: 10px;
+        margin-bottom: 8px;
     }
     .update-heart {
         display: inline-block;
         position: relative; /* For pseudo-elements */
-        width: 8px;
-        height: 8px;
+        margin-right: 10px; /* Added padding */
+        width: 12px;
+        height: 12px;
         background-color: #555;
         transform: rotate(-45deg);
         filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.6));
         flex-shrink: 0; /* Prevent heart from shrinking */
+    }
+    .update-heart:before,
+    .update-heart:after {
+        content: "";
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: inherit;
+    }
+    .update-heart:before {
+        top: -6px;
+        left: 0;
+    }
+    .update-heart:after {
+        top: 0;
+        left: 6px;
     }
     .speed-value {
         padding: 2px 6px;

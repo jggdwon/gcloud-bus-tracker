@@ -142,15 +142,15 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     if (movementState === 'stationary') indicatorClass = 'flash-red';
     const indicatorHTML = `<span class="update-heart ${indicatorClass}"></span>`;
 
-    const trackingDiv = isTracked ? `<div class="tracking-text">${indicatorHTML} TRACKING</div>` : `<div class="status-line">${indicatorHTML}</div>`;
     const speedColor = getSpeedColor(bus.displaySpeed);
-    const speedText = `<b>Speed:</b> <span class="speed-value" style="background-color: ${speedColor};">${bus.displaySpeed.toFixed(1)}</span> mph<br>`;
+    const speedHTML = `<span class="speed-value" style="background-color: ${speedColor};">${bus.displaySpeed.toFixed(1)}</span> mph`;
+    
+    const topLineHTML = `<div class="top-line">${indicatorHTML} ${speedHTML}</div>`;
     const distText = debugInfo.distance ? `<b>Dist:</b> ${debugInfo.distance.toFixed(5)} mi<br>` : '';
     
     const content = `
-        ${trackingDiv}
+        ${topLineHTML}
         ${atStopText}
-        ${speedText}
         ${distText}
         <b>Line:</b> ${bus.lineRef}<br>
         <b>Bus:</b> ${bus.vehicleRef}<br>

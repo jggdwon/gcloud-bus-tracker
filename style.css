@@ -149,7 +149,7 @@ html, body {
 
 /* --- Popups --- */
 .leaflet-popup-content-wrapper {
-  background: #2d3748;
+  background: rgba(45, 55, 72, 0.85);
   color: #e2e8f0;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
