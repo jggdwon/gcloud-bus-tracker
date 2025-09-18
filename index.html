@@ -137,6 +137,34 @@
         100% { background-color: #555; filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.6)); }
     }
 
+    .compass-container {
+        width: 20px;
+        height: 20px;
+        border: 1px solid #a0aec0;
+        border-radius: 50%;
+        position: relative;
+        flex-shrink: 0;
+    }
+    .compass-needle {
+        width: 2px;
+        height: 8px;
+        background-color: #68d391;
+        position: absolute;
+        top: 2px;
+        left: 9px;
+        transform-origin: 50% 8px;
+        transform: rotate(var(--bearing, 0deg));
+        transition: transform 0.5s ease-in-out;
+    }
+    .north-indicator {
+        position: absolute;
+        top: -14px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 12px;
+        font-weight: bold;
+        color: #a0aec0;
+    }
 
     /* Tab Styles */
     .tab-nav {
