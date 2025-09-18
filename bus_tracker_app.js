@@ -202,12 +202,10 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
     const compassHTML = `<div class="compass-container"><div class="north-indicator">N</div><div class="compass-needle" style="--bearing: ${bearing}deg;"></div></div>`;
 
     const topLineHTML = `<div class="top-line">${indicatorHTML} ${speedHTML} ${compassHTML}</div>`;
-    const distText = debugInfo.distance ? `<b>Dist:</b> ${debugInfo.distance.toFixed(5)} mi<br>` : '';
     
     const content = `
         ${topLineHTML}
         ${atStopText}
-        ${distText}
         <b>Line:</b> ${bus.lineRef}<br>
         <b>Bus:</b> ${bus.vehicleRef}<br>
         <b>Destination:</b> ${bus.destinationName}
@@ -347,6 +345,7 @@ async function fetchData() {
                 const timeDiffSeconds = (recordedAtTime.getTime() - bus.lastUpdateTime) / 1000;
                 
                 if (dist > 0.005 && timeDiffSeconds > 0) { // ~8 meters, bus is moving
+                    bus.stoppedUpdateCount = 0; // Reset the counter
                     movementState = 'moved';
                     bus.lastMovedTime = pollTime;
                     const timeDiffHours = timeDiffSeconds / 3600;
@@ -363,20 +362,21 @@ async function fetchData() {
                     }
 
                     // Animate to the new, actual position over the exact time delta.
+                    let duration = timeDiffSeconds * 1000;
+                    if (bus.isAnimating) {
+                        duration *= 0.9; // Increase speed by ~10% if already sliding
+                    }
+
+                    bus.isAnimating = true;
                     bus.marker.slideTo([newLat, newLon], {
-                        duration: timeDiffSeconds * 1000,
+                        duration: duration,
                         keepAtCenter: false,
                     });
 
-                } else { // Bus is stationary or update is old
-                    if (!bus.lastMovedTime) {
-                        bus.lastMovedTime = bus.lastPollTime;
-                    }
-                    // If the bus has stopped, we let the current animation finish naturally.
-                    // The staleBusChecker will eventually snap it to the final position if needed.
-                    // We just decay the speed for the UI.
-                    bus.displaySpeed *= 0.9; // Decay speed
-                    if (bus.displaySpeed < 1) bus.displaySpeed = 0;
+                } else { // Bus is stationary or has very small GPS jitter
+                    bus.stoppedUpdateCount++;
+                    // We just make a note that the bus should be stopped. 
+                    // The 'slideend' event handler will take care of updating the UI when the animation is done.
                 }
                 
                 // ALWAYS update the internal state to the latest actual position
@@ -405,11 +405,8 @@ async function fetchData() {
             } else { // New bus
                 const bearingFromApi = mvj.getElementsByTagName("Bearing")[0]?.textContent;
                 const bearing = bearingFromApi ? parseFloat(bearingFromApi) : null;
-                
-                // Spawn the bus slightly behind its actual position to animate it in
-                const spawnPoint = getPointBehind(newLat, newLon, bearing, 0.02); // approx 32 meters
 
-                const marker = L.marker([spawnPoint.lat, spawnPoint.lon], { 
+                const marker = L.marker([newLat, newLon], { 
                     icon: getIconByZoom('bus', appState.map.getZoom(), lineRef, false, !!nearbyStop), 
                     label: lineRef
                 }).addTo(appState.map);
@@ -419,19 +416,27 @@ async function fetchData() {
                     lineRef: lineRef,
                     vehicleRef: mvj.getElementsByTagName("VehicleRef")[0]?.textContent || '????',
                     destinationName: mvj.getElementsByTagName("DestinationName")[0]?.textContent || 'N/A',
-                    lat: newLat, lon: newLon, // Store the ACTUAL position
+                    lat: newLat, lon: newLon,
                     lastUpdateTime: recordedAtTime.getTime(),
                     lastPollTime: pollTime,
                     lastMovedTime: pollTime,
                     speedHistory: [], displaySpeed: 0, bearing: bearing,
                     atStopSince: null, currentStopCode: null,
                     isNearStop: !!nearbyStop,
+                    isAnimating: false, // Starts stationary
+                    stoppedUpdateCount: 0,
                 };
                 
-                // Animate the marker to its actual starting position
-                marker.slideTo([newLat, newLon], {
-                    duration: 2000,
-                    keepAtCenter: false,
+                marker.on('slideend', () => {
+                    const bus = appState.buses[itemIdentifier];
+                    if (bus) {
+                        bus.isAnimating = false;
+                        // If we've determined the bus has stopped while it was animating, update the speed now.
+                        if (bus.stoppedUpdateCount > 1) {
+                            bus.displaySpeed = 0;
+                            bus.speedHistory = [];
+                        }
+                    }
                 });
 
                 marker.bindPopup('');
