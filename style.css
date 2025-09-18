@@ -18,26 +18,7 @@ html, body {
   border-right: 1px solid #444;
 }
 
-#search-container {
-  display: flex;
-  margin-bottom: 10px;
-}
 
-#search-input {
-  flex-grow: 1;
-  padding: 5px;
-  border: 1px solid #444;
-  background-color: #333;
-  color: #eee;
-}
-
-#search-btn {
-  padding: 5px 10px;
-  border: 1px solid #444;
-  background-color: #333;
-  color: #eee;
-  cursor: pointer;
-}
 
 #bus-list {
   list-style-type: none;
@@ -171,27 +152,27 @@ html, body {
 
 @media (max-width: 768px) {
   #app-container {
-    display: flex;
-    flex-direction: column;
     position: relative;
+    height: 100%;
   }
 
   #sidebar {
-    width: 100%;
+    width: 80%;
+    left: 10%;
     height: auto;
     max-height: 50px;
     border-right: none;
     border-bottom: 1px solid #444;
     position: absolute;
-    top: 0;
-    left: 0;
+    top: 10px;
     z-index: 1000;
     overflow-y: hidden;
     transition: max-height 0.3s ease-in-out;
+    border-radius: 8px;
   }
 
   #sidebar.active {
-    max-height: 50vh;
+    max-height: 80vh;
     overflow-y: auto;
   }
 
@@ -205,15 +186,19 @@ html, body {
   }
 
   #menu-toggle {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 30px;
+    height: 22px;
     position: absolute;
-    top: 10px;
-    right: 20px;
-    font-size: 24px;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
     background: none;
     border: none;
-    color: #eee;
     cursor: pointer;
+    padding: 0;
   }
 
   .mobile-only {
@@ -221,6 +206,13 @@ html, body {
   }
 
   #map {
-    flex-grow: 1;
+    height: 100%;
   }
+}
+
+.burger-line {
+  width: 100%;
+  height: 3px;
+  background-color: #eee;
+  border-radius: 2px;
 }

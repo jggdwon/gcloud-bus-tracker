@@ -33,7 +33,7 @@ const ui = {};
 
 // --- Map Initialization ---
 function initMap() {
-    appState.map = L.map('map', { maxZoom: config.map.maxZoom }).setView(config.map.center, config.map.zoom);
+    appState.map = L.map('map', { maxZoom: config.map.maxZoom, zoomControl: false }).setView(config.map.center, config.map.zoom);
     appState.routeLayer.addTo(appState.map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -140,6 +140,7 @@ function handleBusClick(itemIdentifier) {
         bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, true, bus.isNearStop));
         appState.map.setView(bus.marker.getLatLng(), 18);
     }
+    ui.sidebar.classList.remove('active');
 }
 
 function handleListClick(event) {
@@ -157,6 +158,7 @@ function handleListClick(event) {
             marker.openPopup();
         }
     }
+    ui.sidebar.classList.remove('active');
 }
 
 // --- Data Fetching & Processing ---
@@ -192,7 +194,7 @@ async function fetchBusStops() {
 }
 
 async function fetchData() {
-    ui.updateIndicator.classList.add('loading');
+    
     try {
         const response = await fetch(`/api?boundingBox=${config.boundingBox}`);
         if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -293,7 +295,7 @@ async function fetchData() {
             appState.fetchIntervalId = null;
         }
     } finally {
-        setTimeout(() => ui.updateIndicator.classList.remove('loading'), 500);
+        
     }
 }
 
@@ -321,10 +323,7 @@ function init() {
     Object.assign(ui, {
         busList: document.getElementById('bus-list'),
         busStopList: document.getElementById('bus-stop-list'),
-        updateIndicator: document.getElementById('update-indicator'),
         busStopToggle: document.getElementById('bus-stop-toggle'),
-        updateNowBtn: document.getElementById('update-now-btn'),
-        updateIntervalSelect: document.getElementById('update-interval'),
         statusMessage: document.getElementById('status-message'),
         errorOverlay: document.getElementById('error-overlay'),
         errorMessage: document.getElementById('error-message'),
@@ -335,7 +334,7 @@ function init() {
     });
 
     initMap();
-    appState.updateInterval = parseInt(ui.updateIntervalSelect.value, 10);
+    
     setupEventListeners();
     fetchBusStops();
     fetchData();
@@ -343,15 +342,7 @@ function init() {
 }
 
 function setupEventListeners() {
-    ui.updateNowBtn.addEventListener('click', () => {
-        if (appState.fetchIntervalId) clearInterval(appState.fetchIntervalId);
-        fetchData();
-        startAutoUpdate();
-    });
-    ui.updateIntervalSelect.addEventListener('change', (e) => {
-        appState.updateInterval = parseInt(e.target.value, 10);
-        startAutoUpdate();
-    });
+    
     ui.busStopToggle.addEventListener('change', handleMapZoom);
     document.querySelectorAll('.tab-link').forEach(button => {
         button.addEventListener('click', (e) => {

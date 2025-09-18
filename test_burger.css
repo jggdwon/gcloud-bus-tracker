@@ -1,0 +1,20 @@
+#sidebar {
+  background-color: #44475a;
+  padding: 20px;
+}
+
+#top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+#menu-toggle {
+  display: block;
+  background: none;
+  border: none;
+  color: #f8f8f2;
+  cursor: pointer;
+  font-size: 24px;
+}

@@ -165,25 +165,14 @@
 <body>
   <div id="app-container">
     <div id="sidebar">
-      <button id="menu-toggle" class="mobile-only">☰</button>
+      <button id="menu-toggle" class="mobile-only">
+        <span class="burger-line"></span>
+        <span class="burger-line"></span>
+        <span class="burger-line"></span>
+      </button>
       <div id="sidebar-content">
         <h1>Buses</h1>
-        <div id="search-container">
-          <input type="text" id="search-input" placeholder="Search for streets, buses...">
-          <button id="search-btn"><i class="fa fa-search"></i></button>
-        </div>
-        <button id="update-now-btn">Update Now</button>
-        <div id="update-indicator"></div>
-        <div id="update-interval-container">
-          <label for="update-interval">Update every:</label>
-          <select id="update-interval">
-            <option value="500">0.5s</option>
-            <option value="1000">1s</option>
-            <option value="2000" selected>2s</option>
-            <option value="5000">5s</option>
-            <option value="10000">10s</option>
-          </select>
-        </div>
+        
         <div id="status-message"></div>
 
         <!-- Tab Navigation -->
