@@ -270,7 +270,7 @@ function updateNextStopForBus(bus) {
 }
 
 // --- Icon & UI ---
-const createIcon = (html, className, size) => L.divIcon({ html, className, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+const createIcon = (html, className, size) => L.divIcon({ html, className, iconSize: [size, size], iconAnchor: [size / 2, size / 2], popupAnchor: [0, -(size / 2) - 5] });
 
 function createBusIcon(size, label, color, highlighted = false, isNearStop = false) {
     const gradient = `radial-gradient(circle, ${color} 0%, ${color} 50%, rgba(0,0,0,0) 70%)`;
@@ -338,7 +338,6 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
         ${atStopText}
         <b>Line:</b> ${bus.lineRef}<br>
         <b>Bus:</b> ${bus.vehicleRef}<br>
-        ${nextStopHTML}
     `;
     bus.marker.getPopup().setContent(content);
 }

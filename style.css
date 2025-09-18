@@ -43,7 +43,7 @@ html, body {
     max-height: 50px;
     transition: max-height 0.3s ease-in-out;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    box-shadow: 0 0 12px rgba(104, 211, 243, 0.3), 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   }
 
   #sidebar.active {
@@ -149,15 +149,17 @@ html, body {
 
 /* --- Popups --- */
 .leaflet-popup-content-wrapper {
-  background: rgba(45, 55, 72, 0.85);
+  background: rgba(45, 55, 72, 0.5); /* Match sidebar color */
+  backdrop-filter: blur(10px);
   color: #e2e8f0;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 0 0 12px rgba(104, 211, 243, 0.3), 0 4px 12px rgba(0,0,0,0.4);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .leaflet-popup-content {
   margin: 15px;
   line-height: 1.6;
+  font-family: 'Menlo', 'Consolas', 'monospace';
 }
 .leaflet-popup-tip {
   background: #2d3748;
@@ -181,9 +183,14 @@ html, body {
 .bus-icon-container {
   border-radius: 50%;
   border: 2px solid white;
+  box-shadow: 0 0 10px rgba(104, 211, 243, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
+  position: relative;
+  text-align: center;
+  width: 100%;
+  height: 100%;
 }
 
 .bus-icon-container .fa-bus {
