@@ -1,0 +1,144 @@
+## Gemini Added Memories
+- My name is jonny, we r tech bros, a team
+- we r hacker tech bros, a team, we cool yolo
+- **Always check `package.json` for scripts:** This helps understand how to start/stop services.
+- **Be mindful of the operating system:** Windows commands (`taskkill`, `start /b`) are different from Unix commands (`kill`, `nohup`).
+- **Use `pm2` for backgrounding Node.js applications:** It's a robust solution for managing Node.js applications.
+- **Verify port usage:** If `netstat` doesn't show a process on a port, but the user insists, try alternative methods to find the process (e.g., `tasklist /FI "IMAGENAME eq node.exe"`).
+- **Avoid interactive commands:** Do not run commands that will hang the session (like `npm run dev` without backgrounding).
+
+## Project Learnings (Doncaster Crime Map)
+**Project Overview:**
+*   **Name:** Doncaster Crime Map
+*   **Purpose:** An advanced, real-time crime mapping and analysis tool for Doncaster, with AI-powered insights, predictive hotspots, and detailed incident data visualization.
+*   **Architecture:** Secure client-server architecture. Frontend (React) makes requests to a backend proxy (Node.js/Express) which handles the Gemini API key and communicates with the AI service.
+
+**Frontend (React/Vite):**
+*   **Framework:** React
+*   **Build Tool:** Vite
+*   **Styling:** Tailwind CSS
+*   **Mapping Library:** Leaflet, with `leaflet.markercluster` and `leaflet.heat` plugins.
+*   **State Management:** `useState`, `useEffect`, `useCallback`, `useMemo`, `useReducer` hooks.
+*   **Components:** `App.tsx` (main component), `CrimeMap.tsx` (map visualization), `Modal.tsx` (for displaying AI insights), `CollapsibleSection.tsx` (for crime/stop & search lists).
+*   **Data Fetching:** Uses `services/policeApi.ts` for crime data and `services/geminiService.ts` for AI interactions.
+*   **PWA:** Includes `manifest.json` and `service-worker.js` for Progressive Web App features.
+
+**Backend (Node.js/Express):**
+*   **Technology:** Node.js with Express.
+*   **Entry Point:** `server.mjs`.
+*   **Port:** Runs on port `80`.
+*   **API:** Exposes a `/api/generate` endpoint for AI interactions.
+*   **AI Integration:** Uses `@google/generative-ai` library.
+*   **Logging:** Logs server activity to `server.log`.
+*   **Environment Variables:** Uses `dotenv` for `GEMINI_API_KEY`.
+
+**Data Sources:**
+*   **Crime Data:** `https://data.police.uk/api` for crime and stop & search data.
+*   **AI Services:** Google Gemini API.
+
+**Key Learnings/Observations:**
+*   The application fetches crime data for Doncaster (fixed lat/lng) for the 6 most recent months.
+*   It visualizes crime data on a map with clustering, density heatmaps, and recency heatmaps.
+*   It provides AI-powered features like summarizing crime trends, generating insights, and predicting hotspots.
+*   The UI includes sortable lists for crime incidents and stop & search incidents.
+*   The project uses `moment.js` for date handling.
+*   There's a `.vscode/settings.json` file, indicating VS Code is used for development.
+*   The `web-design.txt` file contains a detailed report on modern web design trends, which might be relevant for future UI/UX tasks.
+
+## Project Quick Reference:
+*   **Project Root:** `c:\Users\me\Desktop\doncaster-crime-map\`
+*   **Frontend:** React, Vite, Tailwind CSS, Leaflet. Runs on `http://localhost:8080/` (needs `npm run dev` to start).
+*   **Backend:** Node.js/Express (`server.mjs`), Gemini API integration. Runs on `http://localhost:3001/` (managed by `pm2`).
+*   **Key Files:**
+    *   `App.tsx`: Main React component.
+    *   `CrimeMap.tsx`: Leaflet map component.
+    *   `server.mjs`: Backend server logic.
+    *   `services/policeApi.ts`: Police API interactions.
+    *   `services/geminiService.ts`: Gemini API interactions.
+    *   `package.json`: Project scripts and dependencies.
+*   **Common Commands:**
+    *   `npm install`: Install dependencies.
+    *   `start /b npm run dev`: Start frontend (Vite) on port 8080 in the background.
+    *   `pm2 status`: Check backend server status.
+    *   `pm2 logs doncaster-crime-map-server`: View backend server logs.
+    *   `pm2 stop doncaster-crime-map-server`: Stop backend server.
+    *   `taskkill /F /PID <PID>`: Kill a process by PID (Windows).
+
+## Detailed Context & Considerations:
+*   **Frontend Port Conflict:** The `npm run dev` script now starts the frontend (Vite) on port 8080. If the frontend is already running, `npm run dev` might hang or fail due to port conflict. The `taskkill` command was used to resolve this.
+*   **Backend Process Management:** `pm2` is now installed and used to manage the backend server (`server.mjs`). This ensures it runs reliably in the background. The backend server is now configured to run on port 3001.
+*   **`read_many_files` Tool Issue:** The `read_many_files` tool consistently failed, even with various attempts (absolute paths, relative paths, glob patterns, `useDefaultExcludes=False`). I had to resort to reading files one by one using `read_file`. This is a known limitation/bug in my current environment.
+*   **Sensitive Files:** `.env` and `.env.local` files contain sensitive API keys and should never be read or exposed. `package-lock.json` is typically large and not essential for understanding code logic.
+*   **AI API Rate Limits:** Be mindful of potential rate limits when interacting with the Gemini API. The `geminiService.ts` file handles calls to `/api/generate`.
+*   **Police API Data:** The `policeApi.ts` fetches data for Doncaster. The `getAvailableCrimeDates` function fetches the 6 most recent months of data.
+*   **UI/UX Design Document:** `web-design.txt` contains a detailed report on modern web design trends, which might be relevant for future UI/UX tasks.
+*   **Error Handling:** The `server.mjs` and `services/geminiService.ts` files include error handling for API calls and JSON parsing.
+*   **Frontend Routing:** The `App.tsx` seems to be a single-page application, with no explicit routing defined in the provided files.
+*   **Server Startup Reliability:** Initially, attempts to background the server using `&` in bash caused hangs. The solution was to install and utilize `pm2` (a Node.js process manager) to reliably start and manage the backend server in the background. The backend server is now configured to run on port 3001.
+*   **Agent Hanging Issue:** I repeatedly made the mistake of running `npm run dev` (interactive command) without backgrounding it, causing myself to hang. I need to be more diligent in remembering to background interactive commands or use non-interactive alternatives. The correct way to run the frontend (Vite) in the background on Windows is `start /b npm run dev`. `pm2` is not suitable for managing the Vite development server.
+*   **Frontend Server Backgrounding (Windows):** The command `start /b npm run dev` successfully runs the Vite development server in the background on Windows without causing the agent to hang. This is the preferred method for backgrounding the frontend.
+*   **Memory Management Protocol:** The `gemini_memory.txt` file should *never* be overwritten. All updates to this file must be append-only to preserve historical context and learnings.
+*   **Development Environment:** Current development is being performed on a Windows laptop for testing purposes. Future deployment is planned for a VM on Google Cloud.
+*   **Phone Testing & Firewall:** To test the server page on a phone or another device on the local network, you will need to ensure your laptop's firewall allows incoming connections on port 8080 (or whatever port the frontend is running on). You might need to create an inbound rule in your Windows Firewall settings to allow TCP traffic on this port.
+*   **Desired Frontend Port:** The app page should always be run on port 80. (Note: This requires administrator privileges on Windows to bind to).
+*   **Laptop IP Address:** The current laptop's IP address for testing is `95.147.0.155`.
+*   **Frontend Port Change (to 8080):** The frontend port was changed from 5173 to 8080 to avoid conflict with the user's router/hub on port 80.
+*   **Git Commit Hash:** `03af3c4` (feat: Refine dark mode, configure frontend for phone testing on port 8080, and update memory.)
+*   **Hub Login Issue:** User is still unable to log in to their router/hub. This means direct port forwarding is currently not possible.
+*   **VM for Phone Testing:** Due to the hub login issue, the plan is to run the code in the Google Cloud VM for phone testing. The VM is set up, but the user will check it.
+
+## VM Details (bus-tracker-vm):
+*   **Status:** Running
+*   **Location:** us-central1-a
+*   **Machine Type:** e2-medium (2 vCPUs, 4 GB Memory)
+*   **Operating System:** Debian 11 (bullseye)
+*   **Firewall:** HTTP traffic (port 80) and HTTPS traffic (port 443) are ON. Network tags: `http-server`, `https-server`.
+*   **External IP Address:** `34.41.209.110`
+*   **Current Task:** Troubleshooting TypeScript version on the VM. User has updated local TypeScript and is now restarting the frontend server to apply the update.
+*   **Potential Project Version Mismatch on VM:** User suspects an older version of the project (not the newest from Git) might have been pulled onto the VM. Instructions have been provided to verify the commit hash on the VM.
+*   **VS Code Restart:** User is restarting VS Code due to it being buggy.
+- **Frontend Port Change (to 80):** The frontend port has been changed to 80.
+- **PM2 App Name Correction:** The PM2 app name for the backend is `crime-map-api`, not `doncaster-crime-map-server`.
+- **Current Focus:** We are developing on a Windows laptop, with plans to deploy and test on a Google Cloud VM. Our primary goal is to ensure the code functions correctly and displays optimally on mobile devices.
+
+- **VM Project Directory Listing (2025-09-21):**
+```
+App.tsx            index.tsx          package.json       tailwind.config.js
+README.md          manifest.json      postcss.config.js  tsconfig.json
+components         metadata.json      server.log         types.ts
+gemini_memory.txt  node_modules       server.mjs         vite.config.ts
+index.css          nohup.out          service-worker.js  web-design.txt
+index.html         package-lock.json  services
+```
+
+- **Recent Actions & VM Setup (2025-09-21):**
+    *   Performed a code review, addressing potential bugs and VM readiness.
+    *   Fixed `API_BASE_URL` in `services/geminiService.ts` to correctly point to `localhost:3001` for local development and use a relative path for VM production.
+    *   Removed redundant `@google/genai` dependency from `package.json`.
+    *   Added `KEYS.txt` to `.gitignore` to prevent sensitive data from being committed.
+    *   Proposed a Git workflow for VM updates: create `vm-update-branch`, commit changes, push to remote, then `git clone`, `git checkout vm-update-branch`, `npm install`, configure `GEMINI_API_KEY` on VM, restart PM2, build frontend, and restart Nginx.
+    *   Confirmed project directory on VM is `~/donny-crime-map` based on user's `dir` output.
+
+- **2025-09-21 14:30:00 - Session Summary & Future Protocol:**
+    *   **New Protocol:** All future amendments to this memory file will be prepended with the current date and time.
+    *   **Code Review & Fixes:** Completed a code review, fixed `API_BASE_URL` in `services/geminiService.ts` for better local/VM compatibility, removed redundant `@google/genai` dependency from `package.json`, and added `KEYS.txt` to `.gitignore`.
+    *   **Git Workflow for VM:** Created and pushed `vm-update-branch` to the remote repository. This branch contains all recent changes.
+    *   **VM Deployment Clarification:** Confirmed that `KEYS.txt` is for local agent reference only and its contents (e.g., `GEMINI_API_KEY`) must be manually configured as environment variables on the VM.
+    *   **VM Update Procedure:** Provided detailed steps for cleaning the VM project directory, cloning the repository, checking out `vm-update-branch`, installing dependencies, configuring environment variables, and restarting services.
+    *   **VM Project Directory:** Confirmed the project directory on the VM is `~/donny-crime-map`.
+
+- **2025-09-22 - Session Summary & Code Review:**
+    *   **Bug Fixes & UI Overhaul:**
+        *   Fixed a critical bug in `services/geminiService.ts` that caused AI features like "Insights" and "Predictive Hotspots" to fail due to a JSON parsing error.
+        *   Implemented a new, modern UI theme (Catppuccin) for both dark and light modes by overhauling `index.css`. This resolved color contrast issues in popups and improved the overall aesthetic.
+        *   Refactored the CSS by removing all styles from `index.html` and consolidating them into `index.css`, improving maintainability.
+        *   Corrected the `dev` script in `package.json` to use `concurrently`, allowing both the frontend and backend to run simultaneously with a single command as intended.
+    *   **Code Review Findings & Recommendations:**
+        *   **State Management:** `App.tsx` is becoming complex. For future scalability, consider adopting a state management library (e.g., Redux Toolkit, Zustand) or React Context to better organize state.
+        *   **Error Handling:** The error handling in `services/policeApi.ts` is silent. It would be more user-friendly to display a notification to the user when API calls fail to fetch data.
+        *   **Accessibility:** The `Modal.tsx` component can be made more accessible by implementing focus trapping and allowing it to be closed with the "Escape" key.
+- **2025-09-22 - Switched to VM:** We are now running the project on the Google Cloud VM, not the local Windows machine.
+- **2025-09-22 - SSH Key Generated:** User generated an SSH key pair. The public key is saved in `KEYS.txt`.
+- **2025-09-22 - VM Reboot Initiated:** User is rebooting the Google Cloud VM 'bus-tracker-vm'.
+- **2025-09-22 - gcloud CLI Available:** User has the 'gcloud' command-line tool available for interacting with Google Cloud.
+- **2025-09-22 - VM IP Address Changed:** The external IP address of the VM 'bus-tracker-vm' has changed to `34.59.207.1` after reboot.

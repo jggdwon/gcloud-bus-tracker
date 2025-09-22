@@ -1,0 +1,238 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #1C1C1E; /* Very dark gray, almost black */
+  --foreground: #FFFFFF; /* White */
+  --primary: #0A84FF; /* Vibrant blue */
+  --primary-focus: #3D99FF; /* Slightly lighter blue for focus */
+  --secondary: #E0E0E0; /* Light gray */
+  --muted: #3A3A3C; /* Darker gray for muted elements */
+  --error: #FF3B30; /* Red for errors */
+  --predictive-hotspot: #FF9500; /* Orange for predictive hotspot */
+  --accent-primary: #0A84FF; /* Vibrant blue */
+  --text-light: #FFFFFF; /* White */
+  --border-color: #3A3A3C; /* Darker gray for borders */
+  --accent-secondary: #5AC8FA; /* Light blue */
+}
+
+[data-theme='light'] {
+  --background: #FFFFFF; /* White */
+  --foreground: #000000; /* Black */
+  --primary: #0A84FF; /* Vibrant blue */
+  --primary-focus: #3D99FF; /* Slightly lighter blue for focus */
+  --secondary: #E0E0E0; /* Light gray */
+  --muted: #E5E5EA; /* Light gray for muted elements */
+  --error: #FF3B30; /* Red for errors */
+  --predictive-hotspot: #FF9500; /* Orange for predictive hotspot */
+  --accent-primary: #0A84FF; /* Vibrant blue */
+  --text-light: #000000; /* Black */
+  --border-color: #C7C7CC; /* Light gray for borders */
+  --accent-secondary: #5AC8FA; /* Light blue */
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
+#root {
+    padding: 0.15rem;
+}
+
+.table-row-highlighted {
+  background-color: rgba(238, 212, 159, 0.1);
+  box-shadow: inset 0 0 8px var(--accent-secondary);
+  color: var(--foreground);
+  font-weight: bold;
+}
+
+.active-glow {
+  box-shadow: 0 0 8px 2px rgba(139, 213, 202, 0.6), inset 0 0 5px rgba(139, 213, 202, 0.4);
+  border-color: var(--accent-secondary);
+}
+
+.predictive-generating {
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+.insights-generating {
+    animation: pulse 1.2s infinite ease-in-out;
+}
+
+.loading-spinner {
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 4px solid var(--primary);
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes flash-red-amber {
+    0% { border-color: var(--error); box-shadow: 0 0 5px var(--error); }
+    50% { border-color: #f59e0b; box-shadow: 0 0 8px #f59e0b; } /* amber-500 */
+    100% { border-color: var(--error); box-shadow: 0 0 5px var(--error); }
+}
+
+.burglary-flash {
+    animation: flash-red-amber 1.8s infinite alternate;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse-predictive {
+    0% { transform: scale(1); opacity: 1; box-shadow: 0 0 5px var(--predictive-hotspot); }
+    50% { transform: scale(1.1); opacity: 0.8; box-shadow: 0 0 12px var(--predictive-hotspot); }
+    100% { transform: scale(1); opacity: 1; box-shadow: 0 0 5px var(--predictive-hotspot); }
+}
+
+/* Leaflet Overrides */
+.leaflet-tile-pane {
+    filter: grayscale(20%) contrast(90%) brightness(95%);
+}
+
+.leaflet-popup-content-wrapper {
+  background-color: rgba(28, 28, 30, 0.7); /* Dark mode background with transparency */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* For Safari support */
+  color: var(--foreground);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem;
+  line-height: 1.1;
+}
+
+/* For light mode, the background color needs to be adjusted */
+[data-theme='light'] .leaflet-popup-content-wrapper {
+  background-color: rgba(255, 255, 255, 0.7); /* Light mode background with transparency */
+}
+
+.leaflet-popup-content {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+[data-theme='dark'] .leaflet-popup-content {
+  color: #FFFFFF; /* Explicitly set to white for dark mode */
+}
+
+.leaflet-popup-content h3 {
+  color: var(--primary);
+  font-size: 1.1em;
+  margin-bottom: 5px;
+}
+
+.leaflet-popup-content strong {
+  color: var(--primary-focus);
+}
+
+.leaflet-popup-tip {
+  background-color: rgba(28, 28, 30, 0.7); /* Dark mode background with transparency */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* For Safari support */
+}
+
+[data-theme='light'] .leaflet-popup-tip {
+  background-color: rgba(255, 255, 255, 0.7); /* Light mode background with transparency */
+}
+
+.leaflet-popup-close-button {
+    color: var(--error);
+    font-size: 1.2rem;
+    right: 0.2rem;
+    top: 0.2rem;
+    text-shadow: none;
+}
+
+.crime-marker-popup .briefing-content {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+  color: var(--foreground);
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 5px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.crime-marker-popup .briefing-content .text-red-400 {
+  color: var(--error);
+}
+
+.crime-marker-popup .loading-spinner {
+  border-top-color: var(--primary);
+}
+
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+    background-color: var(--primary);
+    color: var(--background);
+    font-weight: bold;
+    text-shadow: none;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+.marker-cluster-small span, .marker-cluster-medium span, .marker-cluster-large span {
+    line-height: normal;
+}
+.marker-cluster-small { background-color: rgba(198, 160, 246, 0.7); } /* primary with alpha */
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--background); border-radius: 10px; border: 1px solid var(--border-color); }
+::-webkit-scrollbar-thumb { background: var(--accent-secondary); border-radius: 10px; border: 1px solid var(--background); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-primary); }
+
+/* Leaflet Layers Control Styling */
+.leaflet-control-layers {
+  background-color: rgba(28, 28, 30, 0.8); /* Dark mode background with transparency */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px); /* For Safari support */
+  color: var(--foreground);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-color);
+  padding: 8px;
+}
+
+[data-theme='light'] .leaflet-control-layers {
+  background-color: rgba(255, 255, 255, 0.8); /* Light mode background with transparency */
+}
+
+.leaflet-control-layers-toggle {
+  background-color: var(--primary);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.leaflet-control-layers-expanded .leaflet-control-layers-toggle {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.leaflet-control-layers label {
+  color: var(--foreground);
+}
+
+.leaflet-control-layers-separator {
+  background-color: var(--border-color);
+}
