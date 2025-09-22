@@ -96,7 +96,7 @@ app.get('/timetables', async (req, res) => {
 
 app.use(express.static('.'));
 
-const port = 8000;
+const port = 80;
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
