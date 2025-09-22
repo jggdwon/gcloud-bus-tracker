@@ -23,6 +23,7 @@ const appState = {
     followedBus: null,
     map: null,
     busStopsLayer: L.layerGroup(),
+    busMarkersLayer: L.markerClusterGroup(),
     routeLayer: L.layerGroup(),
     fetchIntervalId: null,
     heartbeatIntervalId: null,
@@ -38,6 +39,7 @@ const ui = {};
 function initMap() {
     appState.map = L.map('map', { maxZoom: config.map.maxZoom, zoomControl: false }).setView(config.map.center, config.map.zoom);
     appState.routeLayer.addTo(appState.map);
+    appState.busMarkersLayer.addTo(appState.map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(appState.map);
@@ -52,6 +54,21 @@ function initMap() {
         px.y -= e.popup._container.clientHeight/2; // find the height of the popup container, divide by 2, subtract from the Y axis
         appState.map.panTo(appState.map.unproject(px),{animate: true}); // pan to new center
         setTimeout(() => { appState.isPanningProgrammatically = false; }, 1200);
+
+        // Fade-in logic
+        const popupContainer = e.popup._container;
+        popupContainer.style.opacity = 0;
+        // Force a reflow before applying the transition
+        void popupContainer.offsetWidth;
+        popupContainer.style.transition = 'opacity 0.7s ease-in';
+        popupContainer.style.opacity = 1;
+    });
+
+    appState.map.on('popupclose', function(e) {
+        // Reset style so it doesn't interfere with next open
+        if (e.popup && e.popup._container) {
+            e.popup._container.style.transition = '';
+        }
     });
 }
 
@@ -312,16 +329,27 @@ function updatePopupContent(bus, movementState = '', debugInfo = {}) {
         atStopText = `<div class="at-stop-info"><b>At Stop:</b> ${stopName} <i class="fa fa-map-pin"></i><br><b>Time at stop:</b> ${secondsAtStop}s</div>`;
     }
 
-    let indicatorClass = '';
-    if (movementState === 'moved') indicatorClass = 'flash-green';
-    if (movementState === 'stationary') indicatorClass = 'flash-red';
-    
     const secondsSinceUpdate = Math.round((Date.now() - (bus.lastMovedTime || bus.lastPollTime)) / 1000);
     const displaySeconds = Math.min(secondsSinceUpdate, 999);
-    const shadowColor = getCounterColor(displaySeconds);
-    const shadowStyle = `text-shadow: -1px -1px 0 ${shadowColor}, 1px -1px 0 ${shadowColor}, -1px 1px 0 ${shadowColor}, 1px 1px 0 ${shadowColor};`;
+    const heartColor = getCounterColor(displaySeconds);
+    const shadowStyle = `text-shadow: -1px -1px 0 ${heartColor}, 1px -1px 0 ${heartColor}, -1px 1px 0 ${heartColor}, 1px 1px 0 ${heartColor};`;
 
-    const indicatorHTML = `<span class="update-heart ${indicatorClass}"><span class="heart-counter" style="${shadowStyle}">${displaySeconds}</span></span>`;
+    // Define animations
+    const beatAnimation = 'beat 1.2s cubic-bezier(0.215, 0.61, 0.355, 1)';
+    let flashAnimation = '';
+    if (movementState === 'moved') {
+        flashAnimation = ', flash-green-anim 1.5s ease-out';
+    } else if (movementState === 'stationary') {
+        flashAnimation = ', flash-red-anim 1.5s ease-out';
+    }
+
+    const heartStyle = `
+        --heart-color: ${heartColor}; 
+        background-color: ${heartColor}; 
+        animation: ${beatAnimation}${flashAnimation};
+    `;
+
+    const indicatorHTML = `<span class="update-heart" style="${heartStyle}"><span class="heart-counter" style="${shadowStyle}">${displaySeconds}</span></span>`;
 
     const speedColor = getSpeedColor(bus.displaySpeed);
     const speedHTML = `<span class="speed-value" style="background-color: ${speedColor};">${bus.displaySpeed.toFixed(1)}</span> mph`;
@@ -374,19 +402,85 @@ function unfollowBus() {
     appState.followedBus = null;
 }
 
-function handleBusClick(itemIdentifier) {
-    if (appState.followedBus === itemIdentifier) {
-        unfollowBus();
-    } else {
-        unfollowBus();
-        appState.followedBus = itemIdentifier;
-        const bus = appState.buses[itemIdentifier];
-        bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, true, bus.isNearStop));
-        appState.isPanningProgrammatically = true;
-        appState.map.setView(bus.marker.getLatLng(), 18);
-        setTimeout(() => { appState.isPanningProgrammatically = false; }, 1200);
-    }
+function triggerDazzle(iconElement) {
+    if (!iconElement || !iconElement.firstChild) return;
+    const child = iconElement.firstChild;
+    child.classList.remove('dazzle-child');
+    void child.offsetWidth;
+    child.classList.add('dazzle-child');
+}
+
+function handleBusClick(itemIdentifier, openPopupAfter = false) {
+    if (appState.isPanningProgrammatically) return;
+
+    const bus = appState.buses[itemIdentifier];
+    if (!bus) return;
+
+    unfollowBus();
+    appState.followedBus = itemIdentifier;
+    bus.marker.setIcon(getIconByZoom('bus', appState.map.getZoom(), bus.lineRef, true, bus.isNearStop));
+    
+    const targetMarker = bus.marker;
+    const targetCenter = targetMarker.getLatLng();
+
+    const arrivalSequence = () => {
+        triggerDazzle(targetMarker._icon);
+        if (openPopupAfter) {
+            setTimeout(() => {
+                if (targetMarker && !targetMarker.isPopupOpen()) {
+                    targetMarker.openPopup();
+                }
+            }, 600);
+        }
+        appState.isPanningProgrammatically = false;
+    };
+
+    appState.isPanningProgrammatically = true;
+    
+    appState.map.flyTo(targetCenter, 18, {
+        duration: 2.5 // A longer, smoother flight
+    });
+    appState.map.once('moveend', arrivalSequence);
+
     ui.sidebar.classList.remove('active');
+}
+
+function handleBusStopClick(stopCode, openPopupAfter = false) {
+    if (appState.isPanningProgrammatically) return;
+
+    const stopMarker = appState.busStopMarkers[stopCode];
+    if (!stopMarker) return;
+
+    if (!appState.map.hasLayer(appState.busStopsLayer)) {
+        appState.map.addLayer(appState.busStopsLayer);
+    }
+
+    const targetCenter = stopMarker.getLatLng();
+    
+    if (appState.map.getCenter().distanceTo(targetCenter) < 10) {
+        triggerDazzle(stopMarker._icon);
+        if (openPopupAfter && !stopMarker.isPopupOpen()) {
+            stopMarker.openPopup();
+        }
+        return;
+    }
+
+    appState.isPanningProgrammatically = true;
+    appState.map.flyTo(targetCenter, 17, {
+        duration: 1.5
+    });
+
+    appState.map.once('moveend', () => {
+        triggerDazzle(stopMarker._icon);
+        if (openPopupAfter) {
+            setTimeout(() => {
+                if (!stopMarker.isPopupOpen()) {
+                    stopMarker.openPopup();
+                }
+            }, 600);
+        }
+        appState.isPanningProgrammatically = false;
+    });
 }
 
 function handleListClick(event) {
@@ -394,17 +488,9 @@ function handleListClick(event) {
     if (!target || !target.dataset.id) return;
     const { id, type } = target.dataset;
     if (type === 'bus') {
-        handleBusClick(id);
-        const marker = appState.buses[id]?.marker;
-        if (marker && !marker.isPopupOpen()) marker.openPopup();
+        handleBusClick(id, true);
     } else if (type === 'stop') {
-        const marker = appState.busStopMarkers[id];
-        if (marker) {
-            appState.isPanningProgrammatically = true;
-            appState.map.setView(marker.getLatLng(), 17);
-            marker.openPopup();
-            setTimeout(() => { appState.isPanningProgrammatically = false; }, 1200);
-        }
+        handleBusStopClick(id, true);
     }
     ui.sidebar.classList.remove('active');
 }
@@ -539,7 +625,7 @@ async function fetchData() {
                 const marker = L.marker([newLat, newLon], { 
                     icon: getIconByZoom('bus', appState.map.getZoom(), lineRef, false, !!nearbyStop), 
                     label: lineRef
-                }).addTo(appState.map);
+                }).addTo(appState.busMarkersLayer);
 
                 appState.buses[itemIdentifier] = {
                     marker, itemIdentifier,
@@ -575,13 +661,13 @@ async function fetchData() {
 
                 marker.bindPopup('');
                 updatePopupContent(appState.buses[itemIdentifier], 'new');
-                marker.on('click', () => handleBusClick(itemIdentifier));
+                marker.on('click', () => handleBusClick(itemIdentifier, true));
             }
         });
 
         for (const key in appState.buses) {
             if (!currentVehicleIds.has(key)) {
-                appState.map.removeLayer(appState.buses[key].marker);
+                appState.busMarkersLayer.removeLayer(appState.buses[key].marker);
                 delete appState.buses[key];
             }
         }
@@ -651,6 +737,7 @@ function startAutoUpdate() {
 }
 
 function init() {
+    alert("DEBUG: New script loaded! Version 107.");
     Object.assign(ui, {
         busList: document.getElementById('bus-list'),
         busStopList: document.getElementById('bus-stop-list'),

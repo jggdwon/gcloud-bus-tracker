@@ -4,7 +4,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css">
   <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/font-awesome/4.0.0/css/font-awesome.css">
-  <link rel="stylesheet" type="text/css" href="style.css?v=3">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" type="text/css" href="style.css?v=106">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <style>
     .bus-label {
@@ -86,6 +88,15 @@
         transform: rotate(-45deg);
         filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.6));
         flex-shrink: 0; /* Prevent heart from shrinking */
+        box-shadow: 0 0 8px var(--heart-color, #555), 0 0 15px var(--heart-color, #555);
+    }
+    @keyframes beat {
+        0% { transform: rotate(-45deg) scale(1.0); }
+        20% { transform: rotate(-45deg) scale(1.15); }
+        40% { transform: rotate(-45deg) scale(1.0); }
+        60% { transform: rotate(-45deg) scale(1.20); }
+        80% { transform: rotate(-45deg) scale(1.0); }
+        100% { transform: rotate(-45deg) scale(1.0); }
     }
     .update-heart:before,
     .update-heart:after {
@@ -109,12 +120,6 @@
         border-radius: 5px;
         color: #1a202c;
         font-weight: bold;
-    }
-    .flash-green {
-        animation: flash-green-anim 1.5s ease-out;
-    }
-    .flash-red {
-        animation: flash-red-anim 1.5s ease-out;
     }
     @keyframes flash-green-anim {
         0% { background-color: #76ff03; filter: drop-shadow(0 0 4px #76ff03); }
@@ -278,7 +283,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
   <script src="https://unpkg.com/leaflet.marker.slideto@0.2.0/Leaflet.Marker.SlideTo.js"></script>
-  <script src="bus_tracker_app.js?v=2"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="bus_tracker_app.js?v=106"></script>
 
   <!-- Error Popup -->
   <div id="error-overlay" class="hidden">
